@@ -17,6 +17,54 @@ A locked-down work laptop can always use the upload page: it's just a website.
 
 New to printer and scanner jargon (ADF, IPP, eSCL, PPD…)? See [Help: terms explained](#help-terms-explained).
 
+## How it fits together
+
+`docker compose up` starts three containers. The scanner and inbox share the `scans/` folder, so scans the printer sends to the inbox appear on the scan page.
+
+```
+          Browsers, laptops and phones on your LAN
+          │ :80 portal      │ :631 IPP           │ :8080 scan page
+          ▼                 ▼                    ▼
+ ┌──────────────────────────────────┐  ┌───────────────────┐  ┌───────────────────┐
+ │ hub                              │  │ scanner           │  │ inbox             │
+ │ web portal (Flask) ──► CUPS      │  │ scanservjs        │  │ FTP server        │
+ │ drivers, LibreOffice, Avahi      │  │ SANE + airscan    │  │ (+ SMB on Linux)  │
+ └────────────────┬─────────────────┘  └─────────┬─────────┘  └─────────▲─────────┘
+                  │ print (IPP/USB)              │ scan (eSCL)          │ Scan to FTP
+                  ▼                              ▼                      │
+ ┌──────────────────────────────────────────────────────────────────────┴─────────────┐
+ │                              Printer / scanner (MFP)                               │
+ └────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Container | Base image | What runs inside |
+|---|---|---|
+| **hub** (`printscan-hub`) | Debian 12 (bookworm-slim) | **CUPS** print server and its drivers, the **web portal** (Python/Flask, served by gunicorn, talks to CUPS via pycups), **LibreOffice** to turn Office files into PDF, **Avahi** for printer discovery, and the `hub-driver` installer |
+| **scanner** (`printscan-scanner`) | [`sbs20/scanservjs`](https://hub.docker.com/r/sbs20/scanservjs) | **scanservjs** web scanning app on top of **SANE** and **sane-airscan**, plus the hub's additions: driver installer, feeder detection, Letter default, tooltips, "Scan now" label |
+| **inbox** (`printscan-inbox`) | Alpine 3.20 | **vsftpd** FTP server (and **Samba** on Linux hosts) that saves the printer's own scans into `scans/` |
+
+The portal shows the scan page inside its own **Scan** tab. Ports above are the defaults; change them in `.env`.
+
+### Built with
+
+PrintScan Hub mostly wires together existing open-source projects. Many thanks to them:
+
+| Project | Used for |
+|---|---|
+| [CUPS](https://openprinting.github.io/cups/) + [cups-filters](https://github.com/OpenPrinting/cups-filters) | Print server, print queues, IPP sharing, converting documents for printers |
+| [OpenPrinting](https://openprinting.github.io/) drivers: Gutenprint, [HPLIP](https://developers.hp.com/hp-linux-imaging-and-printing), Foomatic, `printer-driver-*` | The roughly 17,000 printer models supported out of the box |
+| [scanservjs](https://github.com/sbs20/scanservjs) by [sbs20](https://github.com/sbs20) | The web scanning interface (Scan page) |
+| [SANE](http://www.sane-project.org/) + [sane-airscan](https://github.com/alexpevzner/sane-airscan) | Talking to scanners; driver-free network scanning over eSCL/WSD |
+| [Flask](https://flask.palletsprojects.com/), [gunicorn](https://gunicorn.org/), [pycups](https://github.com/OpenPrinting/pycups) | The hub's web portal and its connection to CUPS |
+| [LibreOffice](https://www.libreoffice.org/) | Printing Word/Excel/PowerPoint files (converted to PDF) |
+| [Avahi](https://avahi.org/) | Bonjour/mDNS so printers and scanners can be discovered |
+| [vsftpd](https://security.appspot.com/vsftpd.html), [Samba](https://www.samba.org/) | The scan inbox (Scan to FTP / network folder) |
+| [Debian](https://www.debian.org/), [Alpine Linux](https://alpinelinux.org/), [Docker Compose](https://docs.docker.com/compose/) | Base images and running everything together |
+
+Each project keeps its own license. The hub's own code is the portal (`hub/portal/`), the
+entrypoints, `shared/hub-driver`, the scanner add-ons (`scanner/hub-*.js`,
+`scanservjs/config/config.local.js`) and the compose files.
+
 ## Quick start
 
 Best on a **Linux** host: a Raspberry Pi, mini PC, NAS or VM.
