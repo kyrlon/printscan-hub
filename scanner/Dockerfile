@@ -24,6 +24,12 @@ COPY scanner/hub-tooltips.js /usr/lib/scanservjs/client/hub-tooltips.js
 RUN sed -i 's#</body>#<script src="hub-tooltips.js"></script></body>#' /usr/lib/scanservjs/client/index.html \
     && grep -q 'hub-tooltips.js' /usr/lib/scanservjs/client/index.html
 
+# Same browser-tab icon as the hub portal (replaces scanservjs' own icon).
+COPY hub/portal/static/icon.svg /usr/lib/scanservjs/client/hub-icon.svg
+COPY hub/portal/static/apple-touch-icon.png /usr/lib/scanservjs/client/hub-apple-touch-icon.png
+RUN sed -i -E 's#<link rel="(icon|shortcut icon|apple-touch-icon)"[^>]*>##g; s#</head>#<link rel="icon" type="image/svg+xml" href="hub-icon.svg"><link rel="apple-touch-icon" href="hub-apple-touch-icon.png"></head>#' /usr/lib/scanservjs/client/index.html \
+    && grep -q 'hub-icon.svg' /usr/lib/scanservjs/client/index.html
+
 COPY shared/hub-driver /usr/local/bin/hub-driver
 COPY scanner/entrypoint-wrapper.sh /entrypoint-wrapper.sh
 RUN sed -i 's/\r$//' /usr/local/bin/hub-driver /entrypoint-wrapper.sh \

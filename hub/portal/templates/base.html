@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ hub_name }}{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icon.svg') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+  <meta name="theme-color" content="#2563eb">
   <style>
     :root { --bg:#f5f6f8; --card:#fff; --text:#1d2330; --muted:#667085; --line:#e3e6eb;
             --accent:#2563eb; --ok:#147a3d; --okbg:#e7f6ec; --err:#b42318; --errbg:#fdecea;
@@ -18,7 +21,9 @@
     body { margin:0; font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); }
     header { background:var(--card); border-bottom:1px solid var(--line); }
     header .wrap { display:flex; align-items:center; gap:20px; flex-wrap:wrap; padding-top:12px; padding-bottom:12px; }
-    header .brand { font-size:17px; font-weight:700; margin-right:auto; color:var(--text); }
+    header .brand { font-size:17px; font-weight:700; margin-right:auto; color:var(--text);
+                    display:inline-flex; align-items:center; gap:9px; }
+    header .brand img { border-radius:6px; }
     header .brand:hover { color:var(--text); }
     main.wrap.full { max-width:none; padding:0; }
     .scan-bar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;
@@ -100,7 +105,7 @@
 </head>
 <body>
 <header><div class="wrap">
-  <a href="{{ url_for('index') }}" class="brand">🖨️ {{ hub_name }}</a>
+  <a href="{{ url_for('index') }}" class="brand"><img src="{{ url_for('static', filename='icon.svg') }}" alt="" width="24" height="24">{{ hub_name }}</a>
   <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}on{% endif %}">Home</a>
   <a href="{{ url_for('print_page') }}" class="{% if request.endpoint == 'print_page' %}on{% endif %}">Print</a>
   <a href="{{ url_for('scan') }}" class="{% if request.endpoint == 'scan' %}on{% endif %}">Scan</a>

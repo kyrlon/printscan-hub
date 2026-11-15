@@ -440,6 +440,12 @@ def healthz():
     return "ok"
 
 
+@app.get("/favicon.ico")
+def favicon():
+    # Browsers ask for /favicon.ico on their own (e.g. for bookmarks); hand them the SVG.
+    return redirect(url_for("static", filename="icon.svg"), code=301)
+
+
 @app.get("/")
 def index():
     """Home: big Print / Scan buttons plus a quick status overview."""
