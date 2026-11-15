@@ -75,7 +75,12 @@
           <span class="muted small">{{ p.model }}{% if p.location %} · {{ p.location }}{% endif %}</span><br>
           {{ device_link(p.web) }}</td>
       <td><span class="pill {{ p.state }}">{{ p.state }}</span><br>{{ alerts(p) }}
-          {% if p.message and not p.alerts %}<br><span class="muted small">{{ p.message }}</span>{% endif %}</td>
+          {% if p.message and not p.alerts %}<br><span class="muted small">{{ p.message }}</span>{% endif %}
+          <form method="post" action="{{ url_for('print_test_page', name=p.name) }}" style="margin-top:8px"
+                onsubmit="return confirm('Print a test page on {{ p.info }}? It uses one sheet of paper.')">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <button class="sm secondary" title="Print one page with color bars and alignment marks to check this printer works">Test page</button>
+          </form></td>
       <td>{{ supplies(p) }}</td>
       <td><code>{{ ipp_base }}{{ p.name }}</code></td>
     </tr>

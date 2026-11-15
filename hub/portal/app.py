@@ -249,8 +249,55 @@ def parse_alerts(reasons):
         else:
             sev = "error" if r in ("media-empty", "media-jam", "cover-open", "door-open",
                                    "toner-empty", "offline", "interlock-open") else "warn"
-        alerts.append({"text": REASON_TEXT.get(r, r.replace("-", " ").capitalize()), "sev": sev})
+        if r == "other":
+            continue        # vague "other-error" says nothing useful next to a specific alert
+        text = REASON_TEXT.get(r, r.replace("-", " ").capitalize())
+        existing = next((a for a in alerts if a["text"] == text), None)
+        if existing:        # same condition reported twice (e.g. two trays): show once, worst severity
+            if ["info", "warn", "error"].index(sev) > ["info", "warn", "error"].index(existing["sev"]):
+                existing["sev"] = sev
+            continue
+        alerts.append({"text": text, "sev": sev})
     return alerts
+
+
+def input_trays(uri):
+    """Per-tray state from printer-input-tray (pycups can't decode it; ipptool can).
+
+    Printers report "media-empty" for the whole printer even when only one tray
+    (often the photo tray) is empty; this tells us which one.
+    """
+    try:
+        p = subprocess.run(["ipptool", "-T", "5", "-tv", uri, "get-printer-attributes.test"],
+                           capture_output=True, text=True, timeout=12)
+    except (subprocess.TimeoutExpired, OSError):
+        return []
+    m = re.search(r"printer-input-tray \(.*?\) = (.*)", p.stdout)
+    if not m:
+        return []
+    trays = []
+    for part in re.split(r",(?=type=)", m.group(1)):
+        kv = dict(x.split("=", 1) for x in part.strip().rstrip(";").split(";") if "=" in x)
+        if "type" not in kv:
+            continue
+        try:
+            status = int(kv.get("status", "0"))
+            feed, xfeed = int(kv.get("mediafeed", "-2")), int(kv.get("mediaxfeed", "-2"))
+        except ValueError:
+            continue
+        if kv.get("type") == "other" and feed < 0:
+            continue                      # manual-feed slot / unknown: not a real tray
+        # Printer-MIB status bits: 8 = alert, 16 = critical alert; 4/5 = unavailable
+        problem = bool(status & 24) or (status & 7) in (4, 5)
+        name = kv.get("name", "Tray")
+        if 0 < xfeed <= 130000 and 0 < feed <= 180000:   # 5x7 in or smaller
+            label = "Photo tray"
+        elif name == "InputTray1":
+            label = "Main tray"
+        else:
+            label = re.sub(r"InputTray(\d+)", r"Tray \1", name)
+        trays.append({"label": label, "problem": problem})
+    return trays
 
 
 def printer_status(c, name, uri):
@@ -277,6 +324,14 @@ def printer_status(c, name, uri):
             attrs = {}
 
     alerts = parse_alerts(attrs.get("printer-state-reasons"))
+    # "Out of paper" may only mean one tray is empty: say which, and don't alarm.
+    paper = next((a for a in alerts if a["text"] in ("Out of paper", "Load paper")), None)
+    if paper and uri.startswith(("ipp://", "ipps://")) and reachable is not False:
+        trays = input_trays(uri)
+        empty = [t["label"] for t in trays if t["problem"]]
+        if empty and len(empty) < len(trays):
+            paper["text"] = " and ".join(dict.fromkeys(empty)) + " empty"
+            paper["sev"] = "info"
     if reachable is False:
         alerts.insert(0, {"text": f"Not responding at {host}", "sev": "error"})
 
@@ -612,6 +667,28 @@ def print_file():
             return redirect(url_for("print_page"))
 
     flash(f"Sent â€œ{filename}â€ to {printer} (job {job}).", "ok")
+    return redirect(url_for("print_page"))
+
+
+@app.post("/printers/<name>/test")
+def print_test_page(name):
+    """Anyone on the LAN can print a test page to check a printer works."""
+    if not NAME_RE.match(name):
+        abort(404)
+    try:
+        c = conn()
+        if name not in c.getPrinters():
+            abort(404)
+        with _cups_user_lock:
+            cups.setUser("test-page")
+            try:
+                job = c.printTestPage(name)
+            finally:
+                cups.setUser("root")
+        _status_cache.clear()
+        flash(f"Test page sent to {name} (job {job}). It shows the printer's colors and alignment.", "ok")
+    except cups.IPPError as e:
+        flash(f"Couldn't send the test page: {e.args[-1] if e.args else e}", "error")
     return redirect(url_for("print_page"))
 
 
