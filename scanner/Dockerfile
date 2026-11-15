@@ -1,6 +1,9 @@
 # scanservjs + the same driver manager as the print hub, so scanner drivers
 # (brscan, epsonscan2, sane backends...) can be added from drivers/scanner/.
-ARG SCANSERVJS_VERSION=latest
+# Pinned to the version the patches below were written and tested against
+# (v3.0.4 = sha256:e42263444a8d...). Newer releases change the client bundle;
+# bump deliberately and re-test the patches.
+ARG SCANSERVJS_VERSION=v3.0.4
 FROM sbs20/scanservjs:${SCANSERVJS_VERSION}
 
 ENV DRIVERS_DIR=/drivers DEBIAN_FRONTEND=noninteractive
@@ -10,7 +13,7 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin
 # the SCAN tab in scanservjs' top bar. The pattern ignores minified variable
 # names; the grep makes the build fail loudly if a new scanservjs version
 # changes the bundle so the patch no longer applies.
-RUN sed -i 's/\("btn-scan":[^,]*(\["\)Scan"\]/\1Scan now"]/g' /usr/lib/scanservjs/client/assets/index-*.js \
+RUN sed -i -E 's/("btn-scan":[^,]*\(\[)(["`])Scan\2\]/\1\2Scan now\2]/g' /usr/lib/scanservjs/client/assets/index-*.js \
     && grep -q '"btn-scan":[^,]*Scan now' /usr/lib/scanservjs/client/assets/index-*.js
 
 # Let a hub-chosen default Source (SCAN_DEFAULT_SOURCE, e.g. "auto" = feeder when

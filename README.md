@@ -71,9 +71,36 @@ entrypoints, `shared/hub-driver`, the scanner add-ons (`scanner/hub-*.js`,
 Best on a **Linux** host: a Raspberry Pi, mini PC, NAS or VM.
 
 ```bash
-cp .env.example .env        # then set ADMIN_PASSWORD
+git clone https://github.com/kyrlon/printscan-hub.git && cd printscan-hub
+scripts/linux-host.sh install-docker   # only if Docker isn't installed yet
+scripts/linux-host.sh prepare          # stop the host's own CUPS (see below)
+cp .env.example .env                   # set ADMIN_PASSWORD and HUB_ADDRESS (this machine's LAN IP)
 docker compose up -d --build
 ```
+
+### Linux host prep: why stop the host's CUPS?
+
+On Linux the hub uses **host networking**, so its CUPS needs port **631** on the machine itself.
+Desktop installs of Debian, Ubuntu and Raspberry Pi OS usually run their own CUPS there, and the
+hub's CUPS can't start while it does. Every printer then lives in the hub instead. The helper script
+does this for you:
+
+| Command | What it does |
+|---|---|
+| `scripts/linux-host.sh status` | Read-only check: host CUPS/Avahi/ipp-usb/Docker, which hub ports are free, USB printers |
+| `scripts/linux-host.sh prepare` | Stops and disables the host's `cups`/`cups-browsed`; installs and starts `avahi-daemon` and `ipp-usb` if missing |
+| `scripts/linux-host.sh restore` | Turns the host's CUPS back on (run `docker compose down` first) |
+| `scripts/linux-host.sh install-docker` | Installs Docker Engine + Compose from Docker's own repository and adds you to the `docker` group |
+
+The commands that change the system ask for `sudo`. Keep **Avahi** (discovery) and **ipp-usb** running:
+the hub uses both.
+
+**USB printers on Linux:** most USB printers from the last ~8 years (including all-in-ones) support
+*IPP over USB*. `ipp-usb` shares them at `http://localhost:60000`, so the hub can print **and scan**
+with no vendor driver. In **Admin → Add a printer**, use the device URI `ipp://localhost:60000/ipp/print`
+with the `everywhere` driver. `scripts/linux-host.sh status` shows whether ipp-usb found your printer.
+Older USB printers without IPP over USB show up as `usb://…` devices and need a driver from the
+*Installing drivers* section.
 
 **Docker Desktop (Windows/macOS)** works for network printers, but USB printers and
 auto-discovery don't work (the admin page shows a warning). Containers run inside a
@@ -247,6 +274,7 @@ anything you had to change.
 | `inbox/` | FTP/SMB drop folder for the printer's own Scan button |
 | `docker-compose.desktop.yml` | Override for Docker Desktop (port mapping instead of host networking) |
 | `shared/hub-driver` | The driver installer used by both images |
+| `scripts/linux-host.sh` | Linux host helper: status, prepare/restore host CUPS, install Docker |
 
 `hub/cupsd.conf` is only the default. After the first start, edit `data/cups/cupsd.conf` and
 `docker compose restart hub`.
