@@ -244,11 +244,13 @@ Set `AVAHI=off` to turn discovery off.
 | Printer | Connection | Driver | Print from portal | Driverless clients (IPP) | Toner / status | Notes |
 |---|---|---|---|---|---|---|
 | Brother MFC-L3780CDW | Network (Wi-Fi/Ethernet) | `everywhere` (no driver) | ✅ text, Word (.docx), test page | ➖ | ✅ live CMYK levels | Added by IP address on Docker Desktop |
+| HP ENVY Photo 7100 | USB, via `ipp-usb` on a Debian 13 host | `everywhere` (no driver), URI `ipp://localhost:60000/ipp/print` | ➖ | ➖ | ✅ tri-color + black ink, paper-out notice | Also on Wi-Fi; no Settings link when reached over USB |
 
 ### Scanners
 
 | Scanner | Connection | Backend | Browser scan | Scan from printer to hub folder (FTP) | Notes |
 |---|---|---|---|---|---|
+| HP ENVY Photo 7100 | USB via `ipp-usb`, and network | `sane-airscan` (eSCL, no driver) | ➖ (detected, Flatbed only) | ➖ | Auto-discovered on a Linux host, both as "(USB)" and over Wi-Fi |
 | Brother MFC-L3780CDW | Network | `sane-airscan` (eSCL, no driver) | ✅ flatbed | ➖ | Reports Flatbed, ADF, ADF Duplex at 100–600 dpi. Feeder detection ✅ (auto-selects ADF when loaded); scanning through the ADF not tried yet. Needs `AIRSCAN_DEVICES` on Docker Desktop |
 
 ### Hosts
@@ -256,7 +258,7 @@ Set `AVAHI=off` to turn discovery off.
 | Host | Network printing | USB devices | Auto-discovery | Notes |
 |---|---|---|---|---|
 | Windows 11 + Docker Desktop (WSL2) | ✅ | ❌ | ❌ | Use `docker-compose.desktop.yml`; add printers/scanners by IP |
-| Linux (Raspberry Pi, mini PC, VM) | ➖ | ➖ | ➖ | Recommended host; not tested yet |
+| Debian 13 (trixie), amd64 | ✅ | ✅ via `ipp-usb` | ✅ scanners found automatically | Run `scripts/linux-host.sh prepare` first (stops the host's CUPS) |
 
 Tried a device? Add a row, including failures. Note the connection, driver/backend and
 anything you had to change.
