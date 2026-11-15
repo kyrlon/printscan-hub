@@ -91,8 +91,10 @@ function applySource(device) {
 
 module.exports = {
   afterConfig(config) {
-    // Port comes from SCAN_PORT in .env (the portal's "Scan" link uses it too).
+    // Internal port; people reach the scan page through the portal (/scan/app/),
+    // which decides who can see which files. SCAN_BIND keeps it off the network.
     config.port = parseInt(process.env.SCAN_PORT || '8080', 10);
+    config.host = process.env.SCAN_BIND || '127.0.0.1';
 
     // Uncomment to set default file name:
     // config.defaultOutputFilename = 'scan-{date}-{time}';

@@ -28,6 +28,13 @@
     main.wrap.full { max-width:none; padding:0; }
     .scan-bar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;
                 padding:6px 16px; border-bottom:1px solid var(--line); background:var(--card); }
+    .files-mode, .account { display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .seg { display:inline-flex; border:1px solid var(--line); border-radius:7px; overflow:hidden; }
+    .seg button { background:transparent; color:var(--muted); border:0; border-radius:0; padding:4px 12px;
+                  font-size:13px; font-weight:600; }
+    .seg button + button { border-left:1px solid var(--line); }
+    .seg button.on { background:var(--accent); color:#fff; }
+    .scan-note { padding:4px 16px; background:var(--card); border-bottom:1px solid var(--line); }
     .scan-frame { display:block; width:100%; height:calc(100vh - 92px); border:0; background:#fff; }
     header a { color:var(--muted); text-decoration:none; }
     header a:hover, header a.on { color:var(--accent); }

@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         hplip foomatic-db-compressed-ppds openprinting-ppds \
         ghostscript poppler-utils \
         # portal
-        python3 python3-flask python3-cups gunicorn \
+        python3 python3-flask python3-cups python3-requests gunicorn \
         # needed by many vendor installers
         ca-certificates curl wget file procps psmisc lsb-base \
     && if [ "$INSTALL_OFFICE" = "true" ]; then \

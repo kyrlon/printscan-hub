@@ -1,7 +1,8 @@
 ﻿# PrintScan Hub
-#   http://<server>/        upload & print from any browser, admin page for drivers
-#   http://<server>:8080/   scanning (scanservjs)
+#   http://<server>/        home, upload & print, scanning (/scan), admin
 #   ipp://<server>:631/printers/<queue>   add as a driverless network printer
+# The scan app (scanservjs) only listens inside the host; the portal serves it
+# at /scan/app/ so it can keep private scans private.
 #
 # Run on a Linux host (Raspberry Pi, mini PC, NAS, VM). Host networking is used so
 # printers can be auto-discovered (mDNS/Bonjour) and USB devices just work.
@@ -21,8 +22,10 @@ services:
     env_file: .env
     environment:
       TZ: ${TZ:-America/New_York}
+      SCANNER_URL: http://127.0.0.1:${SCAN_PORT:-8080}
     volumes:
       - ./data/cups:/etc/cups          # printers, PPDs, cupsd.conf (persistent)
+      - ./data/portal:/data/portal     # accounts + who owns which private scan
       - ./drivers/printer:/drivers     # drivers to (re)install on every rebuild
       - /dev/bus/usb:/dev/bus/usb
       - /var/run/dbus:/var/run/dbus    # use the host's avahi-daemon if present
@@ -39,6 +42,7 @@ services:
     environment:
       TZ: ${TZ:-America/New_York}
       SCAN_PORT: ${SCAN_PORT:-8080}
+      SCAN_BIND: 127.0.0.1             # reachable only through the portal
       SCAN_DEFAULT_PAPER: ${SCAN_DEFAULT_PAPER:-letter}
       SCAN_DEFAULT_SOURCE: ${SCAN_DEFAULT_SOURCE:-auto}
       # Network scanners are usually auto-detected (eSCL/AirScan). If not, set one:

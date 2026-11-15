@@ -22,9 +22,11 @@ from flask import (Flask, Response, abort, flash, redirect, render_template,
                    request, session, url_for)
 from werkzeug.utils import secure_filename
 
+import scanproxy
+import store
+
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
-SCAN_PORT = os.environ.get("SCAN_PORT", "8080")
 HUB_NAME = os.environ.get("HUB_NAME", "PrintScan Hub")
 def _env_mb(name, default):
     """Read a size in MB from .env; a typo falls back to the default instead of crashing."""
@@ -91,11 +93,19 @@ INBOX = {
     "smb_port": os.environ.get("SCAN_INBOX_SMB_PORT", "445"),
 }
 
+ALLOW_SIGNUP = os.environ.get("ALLOW_SIGNUP", "false").lower() == "true"
+USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
+
 app = Flask(__name__)
 # Hard ceiling for any request; per-page limits are checked in check_limits().
 app.config["MAX_CONTENT_LENGTH"] = int(max(MAX_UPLOAD_MB, MAX_DRIVER_UPLOAD_MB) * 1024 * 1024) + 1024 * 1024
 # Stable across gunicorn workers so flash messages survive redirects.
 app.secret_key = hashlib.sha256(b"printscan-hub:" + ADMIN_PASSWORD.encode()).digest()
+app.config.update(SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True,
+                  PERMANENT_SESSION_LIFETIME=30 * 86400)
+
+store.init()
+app.register_blueprint(scanproxy.bp)
 
 _cups_user_lock = threading.Lock()
 _ppd_cache = {"at": 0.0, "data": {}}
@@ -129,7 +139,8 @@ def check_limits():
 
 @app.before_request
 def check_csrf():
-    if request.method == "POST":
+    # The proxied scan app sends JSON API calls; it's guarded in scanproxy instead.
+    if request.method == "POST" and not request.path.startswith("/scan/app/"):
         sent = request.form.get("csrf", "")
         if not sent or not hmac.compare_digest(sent, session.get("csrf", "")):
             abort(400, "Form expired, go back and reload the page.")
@@ -140,7 +151,9 @@ def inject_globals():
     host = request.host.rsplit(":", 1)[0] if not request.host.startswith("[") else request.host.split("]")[0] + "]"
     return {
         "hub_name": HUB_NAME,
-        "scan_url": f"http://{host}:{SCAN_PORT}",
+        "scan_url": url_for("scanproxy.scan_app"),
+        "signed_in_user": session.get("user"),
+        "accounts_on": ALLOW_SIGNUP or store.user_count() > 0,
         "cups_url": f"http://{host}:631",
         "ipp_base": f"http://{host}:631/printers/",
         "env": ENVIRONMENT,
@@ -454,7 +467,80 @@ def print_page():
 
 @app.get("/scan")
 def scan():
-    return render_template("scan.html")
+    return render_template("scan.html", files=scanproxy.status())
+
+
+@app.post("/scan/mode")
+def scan_mode():
+    m = request.form.get("mode")
+    resp = redirect(url_for("scan"))
+    if m in ("shared", "private"):
+        resp.set_cookie(scanproxy.MODE_COOKIE, m, max_age=2 * 365 * 86400, samesite="Lax")
+    return resp
+
+
+# --------------------------------------------------------------- accounts ---
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "")
+        if USERNAME_RE.match(username) and store.check_login(username, password):
+            csrf = session.get("csrf")
+            session.clear()                 # fresh session on sign-in
+            session.permanent = True
+            session["user"], session["csrf"] = username, csrf
+            flash(f"Signed in as {username}. Your scans are private to your account.", "ok")
+            resp = redirect(url_for("scan"))
+            resp.delete_cookie(scanproxy.MODE_COOKIE)   # accounts default to private
+            return resp
+        time.sleep(1)                       # slow down password guessing
+        flash("Wrong username or password.", "error")
+    return render_template("login.html", allow_signup=ALLOW_SIGNUP)
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    if not ALLOW_SIGNUP:
+        abort(404)
+    if request.method == "POST":
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "")
+        err = account_form_error(username, password, request.form.get("password2", ""))
+        if not err:
+            try:
+                store.create_user(username, password)
+            except store.sqlite3.IntegrityError:
+                err = "That username is taken."
+        if err:
+            flash(err, "error")
+        else:
+            session["user"] = username
+            session.permanent = True
+            flash(f"Account created. Signed in as {username}.", "ok")
+            resp = redirect(url_for("scan"))
+            resp.delete_cookie(scanproxy.MODE_COOKIE)
+            return resp
+    return render_template("login.html", allow_signup=True, signup=True)
+
+
+@app.post("/logout")
+def logout():
+    session.pop("user", None)
+    flash("Signed out.", "ok")
+    resp = redirect(url_for("scan"))
+    resp.delete_cookie(scanproxy.MODE_COOKIE)
+    return resp
+
+
+def account_form_error(username, password, password2=None):
+    if not USERNAME_RE.match(username):
+        return "Username: 2–32 lowercase letters, numbers, dots, dashes or underscores."
+    if len(password) < 8:
+        return "Password must be at least 8 characters."
+    if password2 is not None and password != password2:
+        return "The passwords don't match."
+    return None
 
 
 @app.post("/print")
@@ -584,6 +670,7 @@ def admin():
 
     return render_template(
         "admin.html", printers=printers, devices=devices, ppds=ppds, q=q, probe=probe,
+        users=store.list_users(), allow_signup=ALLOW_SIGNUP, limits=scanproxy.LIMITS,
         prefill_uri=request.args.get("uri", ""), prefill_model=request.args.get("model", ""),
         log_tail=log_tail, weak_password=ADMIN_PASSWORD in ("changeme", "admin", "password"),
         apt_list=(DRIVERS_DIR / "apt-packages.txt").read_text() if (DRIVERS_DIR / "apt-packages.txt").exists() else "",
@@ -702,6 +789,45 @@ def admin_driver_search():
         return redirect(url_for("admin"))
     rc, out = run_hub_driver("search", term, timeout=300)
     return render_template("result.html", title=f"Driver search: {term}", ok=True, output=out)
+
+
+@app.post("/admin/users/add")
+@require_admin
+def admin_user_add():
+    username = request.form.get("username", "").strip().lower()
+    password = request.form.get("password", "")
+    err = account_form_error(username, password)
+    if not err:
+        try:
+            store.create_user(username, password)
+        except store.sqlite3.IntegrityError:
+            err = f"An account named {username} already exists."
+    flash(err or f"Account {username} created. They can sign in on the Scan page.", "error" if err else "ok")
+    return redirect(url_for("admin") + "#accounts")
+
+
+@app.post("/admin/users/<username>/<action>")
+@require_admin
+def admin_user_action(username, action):
+    if not USERNAME_RE.match(username):
+        abort(404)
+    if action == "password":
+        password = request.form.get("password", "")
+        if len(password) < 8:
+            flash("Password must be at least 8 characters.", "error")
+        elif store.set_password(username, password):
+            flash(f"Password for {username} changed.", "ok")
+    elif action == "delete":
+        names = store.delete_user(username)
+        if request.form.get("files") == "delete":
+            scanproxy.delete_owned(names)
+            flash(f"Deleted {username} and their {len(names)} scan(s).", "ok")
+        else:
+            store.forget(names)       # no owner any more -> shared
+            flash(f"Deleted {username}. Their {len(names)} scan(s) are now shared.", "ok")
+    else:
+        abort(404)
+    return redirect(url_for("admin") + "#accounts")
 
 
 @app.errorhandler(413)

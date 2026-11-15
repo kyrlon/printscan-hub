@@ -3,10 +3,42 @@
 {% block main_class %}full{% endblock %}
 {% block content %}
 <div class="scan-bar">
-  <span class="muted small">
-    {% if inbox.enabled %}Tip: you can also press <strong>Scan → FTP</strong> on the printer. Those scans appear under <em>Files</em> here.{% endif %}
+  <form method="post" action="{{ url_for('scan_mode') }}" class="files-mode" title="Who can see your scans under FILES">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <span class="small muted">Files:</span>
+    <div class="seg" role="group" aria-label="Who sees scans">
+      <button name="mode" value="shared" class="{{ 'on' if files.mode == 'shared' }}"
+              title="Everyone on the network sees these scans. Scans sent from the printer land here too.">Shared</button>
+      <button name="mode" value="private" class="{{ 'on' if files.mode == 'private' }}"
+              title="{% if files.user %}Only you see these scans, on any device you sign in on.{% else %}Only this browser sees these scans.{% endif %}">
+        {% if files.user %}Only me{% else %}Only this browser{% endif %}</button>
+    </div>
+    <span class="small muted">
+      {% if files.mode == 'private' %}
+        {{ files.count }}{% if files.max_files %} of {{ files.max_files }}{% endif %} files
+        {%- if files.keep_days %}, kept {{ files.keep_days }} day{{ 's' if files.keep_days != 1 }}{% endif %}
+        {%- if files.max_files %}. Oldest are removed past the limit{% endif %}
+      {% else %}
+        visible to everyone on the network
+      {% endif %}
+    </span>
+  </form>
+
+  <span class="account small">
+    {% if files.user %}
+      Signed in as <strong>{{ files.user }}</strong>
+      <form class="inline" method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button class="sm secondary">Sign out</button>
+      </form>
+    {% elif accounts_on %}
+      <a class="linkish" href="{{ url_for('login') }}" title="Sign in to keep your scans private across devices">Sign in</a>
+    {% endif %}
+    <a class="linkish" href="{{ scan_url }}" target="_blank" rel="noopener">Open full screen ↗</a>
   </span>
-  <a class="linkish" href="{{ scan_url }}" target="_blank" rel="noopener">Open full screen ↗</a>
 </div>
+{% if inbox.enabled and files.mode == 'private' %}
+<div class="scan-note small muted">Scans sent from the printer's own Scan button are under <strong>Shared</strong>.</div>
+{% endif %}
 <iframe class="scan-frame" src="{{ scan_url }}" title="Scanner"></iframe>
 {% endblock %}

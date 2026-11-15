@@ -7,7 +7,7 @@ computers don't have to install anything.
 |---|---|---|
 | **Home**: big Print / Scan buttons, toner levels and printer status | `http://<server>/` | anyone on the LAN |
 | **Upload & print** from any browser (PDF, images, text, Word/Excel/PowerPoint) | `http://<server>/print` | anyone on the LAN |
-| **Scan** to PDF/JPG in the browser | `http://<server>/scan` | anyone on the LAN |
+| **Scan** to PDF/JPG in the browser, shared or private | `http://<server>/scan` | anyone on the LAN; optional accounts |
 | **Scan from the printer's button** into a shared folder | FTP / SMB, see below | the printer |
 | **Add as a network printer** without vendor drivers (IPP Everywhere / AirPrint / Mopria) | `http://<server>:631/printers/<queue>` | laptops/phones that are allowed to add printers |
 | **Admin**: add printers, install drivers | `http://<server>/admin` | `ADMIN_USER` / `ADMIN_PASSWORD` |
@@ -22,13 +22,13 @@ New to printer and scanner jargon (ADF, IPP, eSCL, PPD…)? See [Help: terms exp
 `docker compose up` starts three containers. The scanner and inbox share the `scans/` folder, so scans the printer sends to the inbox appear on the scan page.
 
 ```
-          Browsers, laptops and phones on your LAN
-          │ :80 portal      │ :631 IPP           │ :8080 scan page
-          ▼                 ▼                    ▼
+      Browsers, laptops and phones on your LAN
+      │ :80 portal + scan page  │ :631 IPP
+      ▼                         ▼
  ┌──────────────────────────────────┐  ┌───────────────────┐  ┌───────────────────┐
  │ hub                              │  │ scanner           │  │ inbox             │
- │ web portal (Flask) ──► CUPS      │  │ scanservjs        │  │ FTP server        │
- │ drivers, LibreOffice, Avahi      │  │ SANE + airscan    │  │ (+ SMB on Linux)  │
+ │ scan page, private files ────────├─►│ scanservjs        │  │ FTP server        │
+ │ web portal ──► CUPS + drivers    │  │ SANE + airscan    │  │ (+ SMB on Linux)  │
  └────────────────┬─────────────────┘  └─────────┬─────────┘  └─────────▲─────────┘
                   │ print (IPP/USB)              │ scan (eSCL)          │ Scan to FTP
                   ▼                              ▼                      │
@@ -39,11 +39,12 @@ New to printer and scanner jargon (ADF, IPP, eSCL, PPD…)? See [Help: terms exp
 
 | Container | Base image | What runs inside |
 |---|---|---|
-| **hub** (`printscan-hub`) | Debian 12 (bookworm-slim) | **CUPS** print server and its drivers, the **web portal** (Python/Flask, served by gunicorn, talks to CUPS via pycups), **LibreOffice** to turn Office files into PDF, **Avahi** for printer discovery, and the `hub-driver` installer |
+| **hub** (`printscan-hub`) | Debian 12 (bookworm-slim) | **CUPS** print server and its drivers, the **web portal** (Python/Flask, served by gunicorn, talks to CUPS via pycups), **LibreOffice** to turn Office files into PDF, **Avahi** for printer discovery, the `hub-driver` installer, and the gateway to the scan page that keeps private scans private (SQLite, in `data/portal/`) |
 | **scanner** (`printscan-scanner`) | [`sbs20/scanservjs`](https://hub.docker.com/r/sbs20/scanservjs) | **scanservjs** web scanning app on top of **SANE** and **sane-airscan**, plus the hub's additions: driver installer, feeder detection, Letter default, tooltips, "Scan now" label |
 | **inbox** (`printscan-inbox`) | Alpine 3.20 | **vsftpd** FTP server (and **Samba** on Linux hosts) that saves the printer's own scans into `scans/` |
 
-The portal shows the scan page inside its own **Scan** tab. Ports above are the defaults; change them in `.env`.
+The scan app isn't reachable on its own port. The portal serves it at `/scan/app/` and shows it inside its **Scan** tab,
+so it can decide who sees which scans. Ports above are the defaults; change them in `.env`.
 
 ### Built with
 
@@ -61,7 +62,7 @@ PrintScan Hub mostly wires together existing open-source projects. Many thanks t
 | [vsftpd](https://security.appspot.com/vsftpd.html), [Samba](https://www.samba.org/) | The scan inbox (Scan to FTP / network folder) |
 | [Debian](https://www.debian.org/), [Alpine Linux](https://alpinelinux.org/), [Docker Compose](https://docs.docker.com/compose/) | Base images and running everything together |
 
-Each project keeps its own license. The hub's own code is the portal (`hub/portal/`), the
+Each project keeps its own license (see [License](#license)). The hub's own code is the portal (`hub/portal/`), the
 entrypoints, `shared/hub-driver`, the scanner add-ons (`scanner/hub-*.js`,
 `scanservjs/config/config.local.js`) and the compose files.
 
@@ -163,6 +164,24 @@ flatbed-only models show just *Flatbed*, and models with a feeder add *ADF*, *AD
 You can still change Source by hand before each scan. Feeder detection uses eSCL, so it works for
 scanners listed in `AIRSCAN_DEVICES` or found automatically on a Linux host.
 
+## Who sees scans
+
+The **Files:** switch at the top of the Scan page controls who sees scans under **FILES**:
+
+| Mode | Who sees the files | Limits (`.env`) |
+|---|---|---|
+| **Shared** (default) | Everyone on the network. Scans sent from the printer's own Scan button always land here | none |
+| **Only this browser** | Only the browser that made them. No account needed. Clearing the browser's cookies loses access | `PRIVATE_MAX_FILES=20`, `PRIVATE_KEEP_DAYS=7` |
+| **Only me** (signed in) | The account holder, on any device they sign in on. Accounts start in this mode | `ACCOUNT_MAX_FILES=200`, `ACCOUNT_KEEP_DAYS=0` (keep) |
+
+Past the file limit, the oldest private scans are removed; `0` means unlimited.
+Accounts are optional: the admin creates them under **Admin → Accounts**, or set `ALLOW_SIGNUP=true`
+so people can create their own. The **Sign in** link appears on the Scan page once accounts are on.
+Deleting an account either keeps its scans (they become shared) or deletes them.
+
+This keeps scans apart on a shared network. It isn't strong security: the hub uses plain HTTP, so
+anyone who can watch your network traffic could see files in transit.
+
 ## Scan from the printer's own Scan button
 
 The `inbox` service gives printers a place to save scans: FTP on every host, plus an
@@ -220,6 +239,7 @@ anything you had to change.
 | Path | Contents |
 |---|---|
 | `data/cups/` | CUPS state: printers, their PPDs, `cupsd.conf`. Back this up. |
+| `data/portal/` | Accounts and which private scan belongs to whom (`portal.db`). Back this up too. |
 | `drivers/printer/`, `drivers/scanner/` | Drivers to re-install on every rebuild |
 | `scans/` | Scanned files |
 | `hub/` | Print hub image: CUPS + portal (`hub/portal/app.py`) |
@@ -246,7 +266,10 @@ The first start after a rebuild takes longer while the drivers install.
   Anyone on the LAN can also cancel jobs from the portal.
 - Admin pages need `ADMIN_USER`/`ADMIN_PASSWORD`. Driver uploads run as root inside a
   privileged container, so pick a strong password.
-- Don't expose ports 80/631/8080 to the internet.
+- The scan app only listens inside the host (or the containers' private network on Docker Desktop);
+  everyone goes through the portal, which enforces private scans.
+- Account passwords are stored hashed in `data/portal/portal.db`.
+- Don't expose ports 80/631 (or the inbox's FTP ports) to the internet.
 - To shrink the image by ~400 MB, set `INSTALL_OFFICE=false` in `.env` and rebuild.
   Office files then have to be saved as PDF before uploading.
 
@@ -316,3 +339,10 @@ Ideas for connecting the hub to [Home Assistant](https://www.home-assistant.io/)
 | **LAN** | Your local network: the devices on the same router or Wi-Fi |
 | **SMB** | Windows file sharing (`\\server\share`). An alternative "Scan to Network" target on Linux hosts |
 | **USB/IP (usbipd-win)** | A tool that passes a USB device from Windows into Docker Desktop's virtual machine |
+
+## License
+
+PrintScan Hub's own code is released under the [MIT License](LICENSE).
+
+The projects it builds on keep their own licenses. Notably, scanservjs is GPL-2.0: if you publish
+a built `printscan-scanner` image, its scanservjs part falls under that license.
