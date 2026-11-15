@@ -15,6 +15,8 @@ computers don't have to install anything.
 
 A locked-down work laptop can always use the upload page: it's just a website.
 
+New to printer and scanner jargon (ADF, IPP, eSCL, PPD…)? See [Help: terms explained](#help-terms-explained).
+
 ## Quick start
 
 Best on a **Linux** host: a Raspberry Pi, mini PC, NAS or VM.
@@ -199,3 +201,54 @@ The first start after a rebuild takes longer while the drivers install.
 - Don't expose ports 80/631/8080 to the internet.
 - To shrink the image by ~400 MB, set `INSTALL_OFFICE=false` in `.env` and rebuild.
   Office files then have to be saved as PDF before uploading.
+
+## Help: terms explained
+
+### Scanning
+
+| Term | What it means |
+|---|---|
+| **ADF** (Automatic Document Feeder) | The tray on top of many printers that pulls a stack of pages through one at a time. Load pages face up. Shown as *ADF* in the Source list |
+| **Batch** | Putting several scanned pages into one file. *Manual* asks before each page (use it on the glass); *Auto* keeps going (use it with the feeder) |
+| **Color / Gray / Lineart** | Scan modes. *Gray* is shades of gray (fine for black-and-white photos); *Lineart* is pure black and white with the smallest files, good for text |
+| **DPI** (dots per inch) | How much detail a scan captures. 200–300 dpi for documents, 600 for photos. Doubling the dpi makes files about four times bigger |
+| **Duplex** | Both sides of each page. *ADF Duplex* scans front and back in one pass |
+| **eSCL / AirScan** | The standard, driver-free way modern network scanners talk to computers (Apple calls it AirScan). The hub uses it to scan and to check whether the feeder has paper |
+| **Flatbed / Platen** | The glass under the scanner lid. One page at a time; best for photos, books and fragile pages |
+| **Preview** | A quick low-resolution scan for checking the page and dragging the box to choose the scan area. It doesn't save a file |
+| **SANE** | The Linux scanning system the scan page is built on. *sane-airscan* is its driver-free eSCL backend |
+| **Scan area** | The rectangle that gets scanned (Top, Left, Width, Height in mm). Defaults to Letter, set by `SCAN_DEFAULT_PAPER` |
+| **scanservjs** | The open-source web scanning app shown on the Scan page |
+| **Source** | Where the paper is scanned from: glass or feeder. Each scanner reports its own list |
+
+### Printing
+
+| Term | What it means |
+|---|---|
+| **AirPrint / Mopria** | Apple's and Android's built-in driver-free printing. Devices see the hub's printers this way without installing anything |
+| **CUPS** | The print server inside the hub. It holds the queues and drivers and sends jobs to the printers |
+| **Device URI** | The address CUPS uses to reach a printer, e.g. `ipp://192.168.1.185/ipp/print` (network), `socket://…:9100` (raw network) or `usb://…` |
+| **Driver** | Software that turns a document into the printer's own language. With `everywhere` (IPP Everywhere), no vendor driver is needed |
+| **Driverless** | Printing or scanning with built-in, standard protocols (IPP Everywhere, AirPrint, eSCL) instead of vendor drivers |
+| **IPP** (Internet Printing Protocol) | The standard network printing protocol. Clients add the hub's printers with `http://<server>:631/printers/<queue>` |
+| **IPP Everywhere** | The driver-free flavour of IPP that most printers from the last ~10 years support. Chosen as the `everywhere` driver |
+| **Job** | One print request. It shows in the queue as pending, printing, completed, canceled or aborted |
+| **PPD** (PostScript Printer Description) | A small file describing a printer's options (trays, duplex, paper sizes). Many Linux drivers come as PPDs |
+| **Queue** | A printer as CUPS knows it, with a name like `home_printer`. One physical printer can have several queues with different settings |
+| **Toner / marker levels** | Supply levels the printer reports (shown as colored bars). *Low* is the printer's own warning threshold |
+| **Vendor `.deb`** | A Linux driver package from the printer maker (Debian/Ubuntu format). Upload it on the Admin page. Some are *i386* (32-bit), which the hub handles |
+
+### Network & setup
+
+| Term | What it means |
+|---|---|
+| **Bonjour / mDNS / Avahi** | How devices announce themselves on a local network so others can find them automatically. Avahi is the Linux version |
+| **DHCP reservation** | A router setting that always gives a device the same IP address. Use it for the printer and the hub so their addresses don't change |
+| **Docker Desktop / WSL2** | Docker for Windows and Mac. Containers run inside a small Linux virtual machine, which is why USB and auto-discovery don't work there |
+| **`.env`** | The settings file for the hub (passwords, ports, defaults). Edit it, then run `docker compose up -d` |
+| **FTP / passive mode** | A simple file-transfer protocol printers use for "Scan to FTP". *Passive mode* keeps it working through Docker and firewalls, so leave it on |
+| **Host networking / port mapping** | Two ways containers reach the network. Host networking shares the computer's network directly (Linux). Port mapping forwards chosen ports (Docker Desktop) |
+| **Hub address** (`HUB_ADDRESS`) | This computer's IP on your network, e.g. `192.168.1.101`. Printers need it to send scans; "localhost" only means "this same computer" |
+| **LAN** | Your local network: the devices on the same router or Wi-Fi |
+| **SMB** | Windows file sharing (`\\server\share`). An alternative "Scan to Network" target on Linux hosts |
+| **USB/IP (usbipd-win)** | A tool that passes a USB device from Windows into Docker Desktop's virtual machine |
