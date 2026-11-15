@@ -13,6 +13,17 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin
 RUN sed -i 's/\("btn-scan":[^,]*(\["\)Scan"\]/\1Scan now"]/g' /usr/lib/scanservjs/client/assets/index-*.js \
     && grep -q '"btn-scan":[^,]*Scan now' /usr/lib/scanservjs/client/assets/index-*.js
 
+# Let a hub-chosen default Source (SCAN_DEFAULT_SOURCE, e.g. "auto" = feeder when
+# it has paper) win over the source the browser remembered from last time.
+# Original: this.params.source = saved.params.source || device.features["--source"].default
+RUN sed -i 's/this\.params\.source=\([A-Za-z_$]*\)\.params\.source||\([A-Za-z_$]*\)\.features\["--source"\]\.default/this.params.source=(\2.features["--source"].hubForceDefault?null:\1.params.source)||\2.features["--source"].default/' /usr/lib/scanservjs/client/assets/index-*.js \
+    && grep -q 'hubForceDefault' /usr/lib/scanservjs/client/assets/index-*.js
+
+# Hover descriptions for the scan settings and buttons.
+COPY scanner/hub-tooltips.js /usr/lib/scanservjs/client/hub-tooltips.js
+RUN sed -i 's#</body>#<script src="hub-tooltips.js"></script></body>#' /usr/lib/scanservjs/client/index.html \
+    && grep -q 'hub-tooltips.js' /usr/lib/scanservjs/client/index.html
+
 COPY shared/hub-driver /usr/local/bin/hub-driver
 COPY scanner/entrypoint-wrapper.sh /entrypoint-wrapper.sh
 RUN sed -i 's/\r$//' /usr/local/bin/hub-driver /entrypoint-wrapper.sh \

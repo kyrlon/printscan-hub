@@ -3,10 +3,43 @@
 {% block main_class %}full{% endblock %}
 {% block content %}
 <div class="scan-bar">
-  <span class="muted small">
+  <span class="feeder" id="feeder" hidden>
+    <span class="feeder-dot"></span><span id="feeder-text"></span>
+    <button type="button" class="sm" id="feeder-refresh" hidden
+            title="Reload the scanner so it starts from the right source">Refresh scanner</button>
+  </span>
+  <span class="muted small" id="scan-tip">
     {% if inbox.enabled %}Tip: you can also press <strong>Scan → FTP</strong> on the printer. Those scans appear under <em>Files</em> here.{% endif %}
   </span>
   <a class="linkish" href="{{ scan_url }}" target="_blank" rel="noopener">Open full screen ↗</a>
 </div>
-<iframe class="scan-frame" src="{{ scan_url }}" title="Scanner"></iframe>
+<iframe class="scan-frame" id="scan-frame" src="{{ scan_url }}" title="Scanner"></iframe>
+
+{% if scanners|selectattr('escl')|list %}
+<script>
+// Live feeder status. With SCAN_DEFAULT_SOURCE=auto the scanner picks its source
+// when it loads, so offer a refresh if paper is added or removed afterwards.
+(function () {
+  var auto = {{ (source_mode.startswith('auto'))|tojson }};
+  var box = document.getElementById('feeder'), text = document.getElementById('feeder-text'),
+      btn = document.getElementById('feeder-refresh'), frame = document.getElementById('scan-frame');
+  var atLoad = null;
+  function poll() {
+    fetch('{{ url_for("api_feeder") }}', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+      var s = (d.scanners || [])[0];
+      if (!s || !s.feeder) { box.hidden = true; return; }
+      if (atLoad === null) atLoad = s.feeder;
+      box.hidden = false;
+      box.className = 'feeder ' + s.feeder;
+      text.textContent = s.feeder === 'loaded'
+        ? 'Paper in the feeder' + (auto ? ': scanning from the feeder' : '')
+        : 'Feeder empty' + (auto ? ': scanning from the glass' : '');
+      btn.hidden = !(auto && s.feeder !== atLoad);
+    }).catch(function () {});
+  }
+  btn.addEventListener('click', function () { atLoad = null; btn.hidden = true; frame.src = frame.src; });
+  poll(); setInterval(poll, 3000);
+})();
+</script>
+{% endif %}
 {% endblock %}

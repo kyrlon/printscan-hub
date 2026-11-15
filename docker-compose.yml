@@ -40,6 +40,7 @@ services:
       TZ: ${TZ:-America/New_York}
       SCAN_PORT: ${SCAN_PORT:-8080}
       SCAN_DEFAULT_PAPER: ${SCAN_DEFAULT_PAPER:-letter}
+      SCAN_DEFAULT_SOURCE: ${SCAN_DEFAULT_SOURCE:-auto}
       # Network scanners are usually auto-detected (eSCL/AirScan). If not, set one:
       SANED_NET_HOSTS: ${SANED_NET_HOSTS:-}
       AIRSCAN_DEVICES: ${AIRSCAN_DEVICES:-}

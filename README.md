@@ -95,6 +95,24 @@ Most network scanners from the last ~8 years work with no driver through eSCL/Ai
 `docker compose restart scanner`. If a network scanner isn't detected, set
 `SANED_NET_HOSTS`, `AIRSCAN_DEVICES` or `PIXMA_HOSTS` in `.env`.
 
+## Glass or document feeder?
+
+The **Source** list on the Scan page comes from each scanner, so it differs by device:
+flatbed-only models show just *Flatbed*, and models with a feeder add *ADF*, *ADF Duplex*,
+*ADF Front/Back* or similar. Hover over any setting for a short description.
+
+`SCAN_DEFAULT_SOURCE` in `.env` sets where scans start:
+
+| Value | Behaviour |
+|---|---|
+| `auto` (default) | Feeder if it has paper, otherwise the glass. Checked each time the scan page loads; the Scan page shows the feeder state and offers **Refresh scanner** if you load paper afterwards |
+| `auto-duplex` | Same as `auto`, but both sides when using the feeder |
+| `flatbed` / `adf` / `duplex` | Always start there |
+| `remember` | Whatever was used last time in that browser |
+
+You can still change Source by hand before each scan. Feeder detection uses eSCL, so it works for
+scanners listed in `AIRSCAN_DEVICES` or found automatically on a Linux host.
+
 ## Scan from the printer's own Scan button
 
 The `inbox` service gives printers a place to save scans: FTP on every host, plus an
