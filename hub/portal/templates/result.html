@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · {{ hub_name }}{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>{{ title }}</h1>
+  <div class="flash {{ 'ok' if ok else 'error' }}">{{ 'Finished successfully.' if ok else 'Finished with errors — see output below.' }}</div>
+  <pre>{{ output or '(no output)' }}</pre>
+  <a class="btn" href="{{ url_for('admin') }}#drivers">Back to admin</a>
+</div>
+{% endblock %}

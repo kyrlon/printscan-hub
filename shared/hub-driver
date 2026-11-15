@@ -1,0 +1,173 @@
+#!/bin/bash
+# hub-driver - install printer/scanner drivers into the running container and
+# remember them in $DRIVERS_DIR so they are re-installed whenever the container
+# is recreated (image updates, `docker compose up --force-recreate`, etc.).
+#
+#   hub-driver sync                 install everything listed in $DRIVERS_DIR
+#   hub-driver apt <pkg> [pkg...]   apt-get install and remember the packages
+#   hub-driver add <file>           copy a .deb / .ppd / .ppd.gz / .sh into
+#                                   $DRIVERS_DIR and install it
+#   hub-driver search <term>        search apt + installed CUPS drivers
+#   hub-driver list                 show what is remembered / installed
+#
+# Layout of $DRIVERS_DIR (default /drivers):
+#   apt-packages.txt   one Debian package per line (# comments allowed)
+#   debs/*.deb         vendor .deb packages (Brother, Epson, Canon, ...)
+#   ppd/*.ppd(.gz)     PPD files (printer hub only)
+#   scripts/*.sh       custom install scripts, run once per container
+#   install.log        log of every install run
+set -uo pipefail
+
+DRIVERS_DIR="${DRIVERS_DIR:-/drivers}"
+STATE_DIR=/var/lib/hub-driver          # lives in the container layer on purpose:
+mkdir -p "$STATE_DIR/done"             # wiped on recreate -> triggers reinstall
+LOG="$DRIVERS_DIR/install.log"
+export DEBIAN_FRONTEND=noninteractive
+APT_OPTS=(-o Dpkg::Use-Pty=0 -o APT::Color=0 -q)
+
+mkdir -p "$DRIVERS_DIR"/{debs,ppd,scripts} 2>/dev/null || true
+touch "$DRIVERS_DIR/apt-packages.txt" "$LOG" 2>/dev/null || LOG=/dev/null
+
+log() { echo "[hub-driver $(date '+%F %T')] $*" | tee -a "$LOG" >&2; }
+
+run() {   # run a command, stream output to log, return its status
+  log "\$ $*"
+  "$@" 2>&1 | tee -a "$LOG"
+  return "${PIPESTATUS[0]}"
+}
+
+apt_ready=0
+apt_update() {
+  [ "$apt_ready" = 1 ] && return 0
+  run apt-get update -qq && apt_ready=1
+}
+
+valid_pkg() { [[ "$1" =~ ^[a-z0-9][a-z0-9+.:-]+$ ]]; }
+
+is_installed() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"; }
+
+stamp() { sha256sum "$1" | cut -c1-16; }
+
+install_apt() {
+  local want=()
+  for p in "$@"; do
+    valid_pkg "$p" || { log "skipping invalid package name: $p"; continue; }
+    is_installed "$p" || want+=("$p")
+  done
+  [ ${#want[@]} -eq 0 ] && return 0
+  apt_update || return 1
+  run apt-get "${APT_OPTS[@]}" install -y --no-install-recommends "${want[@]}"
+}
+
+install_deb() {
+  local deb="$1" s arch host_arch
+  s="deb-$(stamp "$deb")"
+  [ -e "$STATE_DIR/done/$s" ] && return 0
+  arch=$(dpkg-deb -f "$deb" Architecture 2>/dev/null || echo all)
+  host_arch=$(dpkg --print-architecture)
+  # Many vendor drivers (notably Brother) still ship i386-only packages.
+  if [ "$arch" = i386 ] && [ "$host_arch" = amd64 ] && ! dpkg --print-foreign-architectures | grep -qx i386; then
+    log "enabling i386 multiarch for $(basename "$deb")"
+    dpkg --add-architecture i386
+    apt_ready=0
+  fi
+  apt_update || return 1
+  # apt resolves the .deb's dependencies; fall back to dpkg --force for
+  # vendor packages with broken/unsatisfiable dependency metadata.
+  if run apt-get "${APT_OPTS[@]}" install -y --no-install-recommends "$deb"; then
+    touch "$STATE_DIR/done/$s"
+  else
+    log "apt failed for $deb, retrying with dpkg --force-all"
+    run dpkg -i --force-all "$deb" && touch "$STATE_DIR/done/$s"
+  fi
+}
+
+install_ppd() {
+  local ppd="$1" dest=/usr/share/ppd/custom
+  [ -d /usr/share/cups ] || return 0      # not a CUPS container
+  mkdir -p "$dest"
+  cp -f "$ppd" "$dest/" && log "PPD available: $(basename "$ppd")"
+}
+
+install_script() {
+  local sh="$1" s
+  s="sh-$(stamp "$sh")"
+  [ -e "$STATE_DIR/done/$s" ] && return 0
+  run bash "$sh" && touch "$STATE_DIR/done/$s"
+}
+
+cmd_sync() {
+  local rc=0 pkgs
+  mapfile -t pkgs < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$DRIVERS_DIR/apt-packages.txt" | grep -v '^$')
+  [ ${#pkgs[@]} -gt 0 ] && { install_apt "${pkgs[@]}" || rc=1; }
+  shopt -s nullglob nocaseglob
+  for f in "$DRIVERS_DIR"/debs/*.deb;                         do install_deb "$f"    || rc=1; done
+  for f in "$DRIVERS_DIR"/ppd/*.ppd "$DRIVERS_DIR"/ppd/*.ppd.gz; do install_ppd "$f"    || rc=1; done
+  for f in "$DRIVERS_DIR"/scripts/*.sh;                        do install_script "$f" || rc=1; done
+  # Make CUPS rebuild its driver list on the next request.
+  rm -f /var/cache/cups/ppds.dat 2>/dev/null
+  [ $rc -eq 0 ] && log "sync complete" || log "sync finished with errors (see above)"
+  return $rc
+}
+
+cmd_apt() {
+  [ $# -gt 0 ] || { echo "usage: hub-driver apt <package>..." >&2; return 2; }
+  install_apt "$@" || return 1
+  for p in "$@"; do
+    valid_pkg "$p" && ! grep -qx "$p" "$DRIVERS_DIR/apt-packages.txt" && echo "$p" >> "$DRIVERS_DIR/apt-packages.txt"
+  done
+  rm -f /var/cache/cups/ppds.dat 2>/dev/null
+  log "remembered: $*"
+}
+
+cmd_add() {
+  local f="$1" name dir
+  [ -f "$f" ] || { echo "no such file: $f" >&2; return 2; }
+  name=$(basename "$f")
+  case "${name,,}" in
+    *.deb)            dir=debs ;;
+    *.ppd|*.ppd.gz)   dir=ppd ;;
+    *.sh)             dir=scripts ;;
+    *) echo "unsupported file type: $name (use .deb, .ppd, .ppd.gz or .sh)" >&2; return 2 ;;
+  esac
+  [ "$(realpath "$f")" = "$(realpath -m "$DRIVERS_DIR/$dir/$name")" ] || cp -f "$f" "$DRIVERS_DIR/$dir/$name"
+  log "added $dir/$name"
+  case "$dir" in
+    debs)    install_deb "$DRIVERS_DIR/$dir/$name" ;;
+    ppd)     install_ppd "$DRIVERS_DIR/$dir/$name" ;;
+    scripts) install_script "$DRIVERS_DIR/$dir/$name" ;;
+  esac
+  local rc=$?
+  rm -f /var/cache/cups/ppds.dat 2>/dev/null
+  return $rc
+}
+
+cmd_search() {
+  local term="${1:?usage: hub-driver search <term>}"
+  apt_update >/dev/null 2>&1
+  echo "== Debian packages matching '$term' =="
+  apt-cache search "$term" | grep -Ei 'print|scan|driver|ppd|sane|cups|foomatic' | head -40
+  if command -v lpinfo >/dev/null; then
+    echo; echo "== Installed CUPS drivers matching '$term' =="
+    lpinfo -m 2>/dev/null | grep -i -- "$term" | head -40
+  fi
+}
+
+cmd_list() {
+  echo "Drivers dir: $DRIVERS_DIR"
+  echo "-- apt-packages.txt:"; sed -e 's/#.*//' "$DRIVERS_DIR/apt-packages.txt" | grep -v '^[[:space:]]*$' | sed 's/^/   /'
+  shopt -s nullglob
+  echo "-- debs:";    for f in "$DRIVERS_DIR"/debs/*;    do echo "   $(basename "$f")"; done
+  echo "-- ppd:";     for f in "$DRIVERS_DIR"/ppd/*;     do echo "   $(basename "$f")"; done
+  echo "-- scripts:"; for f in "$DRIVERS_DIR"/scripts/*; do echo "   $(basename "$f")"; done
+  command -v lpinfo >/dev/null && echo "-- CUPS knows $(lpinfo -m 2>/dev/null | wc -l) driver models"
+}
+
+case "${1:-}" in
+  sync)   shift; cmd_sync "$@" ;;
+  apt)    shift; cmd_apt "$@" ;;
+  add)    shift; cmd_add "$@" ;;
+  search) shift; cmd_search "$@" ;;
+  list)   shift; cmd_list "$@" ;;
+  *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

@@ -1,0 +1,6 @@
+# Extra Debian packages to install in the scanner container (one per line).
+# The scanservjs image already has sane-backends and sane-airscan (most network
+# scanners from the last ~8 years work through eSCL/AirScan with no driver).
+# Examples:
+# hplip                        # HP scanners via the hpaio backend
+# sane-utils

@@ -1,0 +1,68 @@
+﻿# PrintScan Hub
+#   http://<server>/        upload & print from any browser, admin page for drivers
+#   http://<server>:8080/   scanning (scanservjs)
+#   ipp://<server>:631/printers/<queue>   add as a driverless network printer
+#
+# Run on a Linux host (Raspberry Pi, mini PC, NAS, VM). Host networking is used so
+# printers can be auto-discovered (mDNS/Bonjour) and USB devices just work.
+
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: hub/Dockerfile
+      args:
+        INSTALL_OFFICE: ${INSTALL_OFFICE:-true}
+    image: printscan-hub:local
+    container_name: printscan-hub
+    restart: unless-stopped
+    network_mode: host
+    privileged: true          # USB printers + installing vendor drivers
+    env_file: .env
+    environment:
+      TZ: ${TZ:-America/New_York}
+    volumes:
+      - ./data/cups:/etc/cups          # printers, PPDs, cupsd.conf (persistent)
+      - ./drivers/printer:/drivers     # drivers to (re)install on every rebuild
+      - /dev/bus/usb:/dev/bus/usb
+      - /var/run/dbus:/var/run/dbus    # use the host's avahi-daemon if present
+
+  scanner:
+    build:
+      context: .
+      dockerfile: scanner/Dockerfile
+    image: printscan-scanner:local
+    container_name: printscan-scanner
+    restart: unless-stopped
+    network_mode: host
+    privileged: true          # USB scanners
+    environment:
+      TZ: ${TZ:-America/New_York}
+      SCAN_PORT: ${SCAN_PORT:-8080}
+      SCAN_DEFAULT_PAPER: ${SCAN_DEFAULT_PAPER:-letter}
+      # Network scanners are usually auto-detected (eSCL/AirScan). If not, set one:
+      SANED_NET_HOSTS: ${SANED_NET_HOSTS:-}
+      AIRSCAN_DEVICES: ${AIRSCAN_DEVICES:-}
+      PIXMA_HOSTS: ${PIXMA_HOSTS:-}
+    volumes:
+      - ./scans:/var/lib/scanservjs/output
+      - ./scanservjs/config/config.local.js:/etc/scanservjs/config.local.js:ro
+      - ./drivers/scanner:/drivers
+      - /dev/bus/usb:/dev/bus/usb
+      - /var/run/dbus:/var/run/dbus
+
+  # "Scan to FTP / Scan to Network" target for printers' own Scan buttons.
+  # Files land in ./scans and appear in the scan page's file list.
+  inbox:
+    build:
+      context: .
+      dockerfile: inbox/Dockerfile
+    image: printscan-inbox:local
+    container_name: printscan-inbox
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    environment:
+      TZ: ${TZ:-America/New_York}
+    volumes:
+      - ./scans:/scans

@@ -1,0 +1,44 @@
+# Override for Docker Desktop (Windows/macOS), where "host" networking means the
+# Docker VM's network, not your PC's, so the hub would be unreachable.
+# This uses normal port mapping instead. USB printers and auto-discovery don't
+# work on Docker Desktop; network printers added by IP address do.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.desktop.yml up -d --build
+#
+# (Or put COMPOSE_FILE=docker-compose.yml;docker-compose.desktop.yml in .env
+#  on Windows, ':' instead of ';' on macOS, and just run `docker compose up -d`.)
+
+#
+# Network scanners must be listed in .env (AIRSCAN_DEVICES=...) because they
+# can't be auto-discovered from inside the Docker VM.
+
+services:
+  hub:
+    network_mode: bridge
+    environment:
+      AVAHI: "off"
+    ports:
+      - "${PORTAL_PORT:-80}:${PORTAL_PORT:-80}"
+      - "631:631"
+    volumes:
+      # Replace the Docker VM's D-Bus mount (it's not your PC's and has no avahi).
+      - type: tmpfs
+        target: /var/run/dbus
+
+  scanner:
+    network_mode: bridge
+    ports:
+      - "${SCAN_PORT:-8080}:${SCAN_PORT:-8080}"
+    volumes:
+      # Private D-Bus so the container can run its own avahi for sane-airscan.
+      - type: tmpfs
+        target: /var/run/dbus
+
+  inbox:
+    network_mode: bridge
+    environment:
+      # Windows itself owns port 445, so only FTP is offered on Docker Desktop.
+      SCAN_INBOX_SMB: "false"
+    ports:
+      - "${SCAN_INBOX_FTP_PORT:-21}:${SCAN_INBOX_FTP_PORT:-21}"
+      - "${SCAN_INBOX_PASV_MIN:-21100}-${SCAN_INBOX_PASV_MAX:-21110}:${SCAN_INBOX_PASV_MIN:-21100}-${SCAN_INBOX_PASV_MAX:-21110}"

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Scan · {{ hub_name }}{% endblock %}
+{% block main_class %}full{% endblock %}
+{% block content %}
+<div class="scan-bar">
+  <span class="muted small">
+    {% if inbox.enabled %}Tip: you can also press <strong>Scan → FTP</strong> on the printer. Those scans appear under <em>Files</em> here.{% endif %}
+  </span>
+  <a class="linkish" href="{{ scan_url }}" target="_blank" rel="noopener">Open full screen ↗</a>
+</div>
+<iframe class="scan-frame" src="{{ scan_url }}" title="Scanner"></iframe>
+{% endblock %}

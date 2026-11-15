@@ -1,0 +1,22 @@
+{% macro alerts(p) -%}
+  {% for a in p.alerts or [] %}<span class="alert {{ a.sev }}">{{ a.text }}</span>{% endfor %}
+{%- endmacro %}
+
+{% macro supplies(p) -%}
+  {% if p.supplies %}
+  <div class="supplies">
+    {% for s in p.supplies %}
+    <div class="supply {% if s.low %}low{% endif %}" title="{{ s.label }}{% if s.kind %} {{ s.kind }}{% endif %}">
+      <span>{{ s.label }}</span>
+      <div class="track"><div class="fill {% if s.black %}black{% endif %}"
+           style="width:{{ s.level if s.level is not none else (50 if s.some else 0) }}%;background:{{ s.color }}"></div></div>
+      <span class="pct">{% if s.level is not none %}{{ s.level }}%{% elif s.some %}ok{% else %}?{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}<span class="muted small">Not reported</span>{% endif %}
+{%- endmacro %}
+
+{% macro device_link(url, label="Device settings") -%}
+  {% if url %}<a class="linkish" href="{{ url }}" target="_blank" rel="noopener">⚙ {{ label }} ↗</a>{% endif %}
+{%- endmacro %}

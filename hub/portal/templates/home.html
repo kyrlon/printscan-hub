@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_status.html" import alerts, supplies, device_link %}
+{% block content %}
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+<div class="tiles">
+  <a class="tile" href="{{ url_for('print_page') }}">
+    <span class="tile-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/><circle cx="17.5" cy="12" r=".6" fill="currentColor"/>
+      </svg>
+    </span>
+    <span class="tile-title">Print</span>
+    <span class="tile-sub">
+      {% if printers %}Upload a file and print it. Nothing to install.
+      {% else %}No printers set up yet{% endif %}
+    </span>
+  </a>
+
+  <a class="tile" href="{{ url_for('scan') }}">
+    <span class="tile-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 15l15-9"/><rect x="2" y="14" width="20" height="6" rx="2"/><path d="M6 17h4"/><circle cx="18" cy="17" r=".6" fill="currentColor"/>
+      </svg>
+    </span>
+    <span class="tile-title">Scan</span>
+    <span class="tile-sub">Scan to PDF or image and download it.</span>
+  </a>
+</div>
+
+{% if printers or scanners %}
+<div class="card">
+  <h2>Status</h2>
+  <div class="table-scroll"><table>
+    {% for p in printers %}
+    <tr>
+      <td><strong>{{ p.info }}</strong>{% if p.default %} <span class="pill">default</span>{% endif %}<br>
+          <span class="muted small">{{ p.location or p.model }}</span></td>
+      <td><span class="pill {{ p.state }}">{{ p.state }}</span><br>{{ alerts(p) }}</td>
+      <td>{{ supplies(p) }}</td>
+      <td style="text-align:right">{{ device_link(p.web, "Settings") }}</td>
+    </tr>
+    {% endfor %}
+    {% for s in scanners %}
+    <tr>
+      <td><strong>{{ s.name }}</strong><br><span class="muted small">Scanner</span></td>
+      <td colspan="2"><span class="pill idle">ready</span></td>
+      <td style="text-align:right">{{ device_link(s.web, "Settings") }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% if inbox.enabled %}
+  <p class="muted small" style="margin:12px 0 0">Tip: you can also press <strong>Scan → FTP</strong> on the printer itself.
+    The file shows up under <em>Files</em> on the Scan page.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

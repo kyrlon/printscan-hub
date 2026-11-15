@@ -1,0 +1,8 @@
+# Extra Debian packages to install in the print hub (one per line).
+# The image already includes printer-driver-all, hplip, gutenprint, foomatic and
+# openprinting PPDs, so most printers work without adding anything here.
+# Examples:
+# printer-driver-brlaser       # many Brother mono lasers
+# printer-driver-splix         # Samsung / Xerox SPL
+# printer-driver-foo2zjs       # HP/Minolta/Oki ZjStream etc.
+# hplip-gui

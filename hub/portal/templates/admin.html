@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% from "_status.html" import alerts, device_link %}
+{% block title %}Admin · {{ hub_name }}{% endblock %}
+{% block content %}
+{% if not env.usb_bus %}
+<div class="flash warn">
+  {% if env.vm %}
+    <strong>Running in {{ env.vm }}: some features are limited</strong>
+    <ul class="warn-list">
+      <li><strong>USB printers won't work.</strong> Docker runs this hub inside a Linux VM, and your computer's USB ports aren't connected to it.</li>
+      <li><strong>Network printers (Wi-Fi/Ethernet) work fine.</strong></li>
+      <li><strong>Printers won't be found automatically.</strong> Look them up by IP address in <em>Add a printer</em> below.</li>
+      <li><strong>For USB printers:</strong> run the hub on a Linux machine (Raspberry Pi, mini PC, NAS), or attach the device to the VM with
+        <a href="https://github.com/dorssel/usbipd-win" target="_blank" rel="noopener">usbipd-win</a> (Windows).</li>
+    </ul>
+  {% else %}
+    <strong>No USB bus is visible in this container.</strong>
+    USB printers won't be detected. Check that the container is <code>privileged</code> and mounts <code>/dev/bus/usb</code>
+    (see <code>docker-compose.yml</code>). Network printers are not affected.
+  {% endif %}
+  <span class="small muted">(kernel {{ env.kernel }})</span>
+</div>
+{% endif %}
+{% if weak_password %}<div class="flash error">You are using a weak ADMIN_PASSWORD. Change it in <code>.env</code> and run <code>docker compose up -d</code>.</div>{% endif %}
+
+<div class="card">
+  <h1>Printers</h1>
+  <p class="muted small">Every printer here is shared on the network. For advanced settings (default paper size, trays, classes) use the
+    <a href="{{ cups_url }}/admin" target="_blank">full CUPS admin</a> (same admin login).</p>
+  {% if printers %}
+  <div class="table-scroll"><table>
+    <tr><th>Queue</th><th>Device / driver</th><th>Status</th><th></th></tr>
+    {% for p in printers %}
+    <tr>
+      <td><strong>{{ p.name }}</strong>{% if p.default %} <span class="pill">default</span>{% endif %}<br>
+          <span class="muted small">{{ p.info }}{% if p.location %} · {{ p.location }}{% endif %}</span></td>
+      <td class="small"><code>{{ p.uri }}</code><br><span class="muted">{{ p.model }}</span></td>
+      <td><span class="pill {{ p.state }}">{{ p.state }}</span>{% if not p.accepting %} <span class="pill stopped">rejecting</span>{% endif %}
+          <br>{{ alerts(p) }}
+          {% if p.message and not p.alerts %}<br><span class="muted small">{{ p.message }}</span>{% endif %}</td>
+      <td><div class="actions" style="align-items:center">
+        {{ device_link(p.web) }}
+        {% for action, label, cls in [('test','Test page','secondary'),('default','Make default','secondary'),('resume','Resume','secondary'),('delete','Delete','danger')] %}
+          {% if not (action == 'default' and p.default) and not (action == 'resume' and p.state != 'stopped' and p.accepting) %}
+          <form class="inline" method="post" action="{{ url_for('admin_printer_action', name=p.name, action=action) }}"
+                {% if action == 'delete' %}onsubmit="return confirm('Delete printer {{ p.name }}?')"{% endif %}>
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <button class="sm {{ cls }}">{{ label }}</button>
+          </form>
+          {% endif %}
+        {% endfor %}
+      </div></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p>No printers yet. Add one below.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Add a printer</h2>
+
+  <label>1. Find the printer</label>
+  <form method="get" action="{{ url_for('admin') }}" class="actions">
+    <input type="hidden" name="discover" value="1">
+    {% if prefill_model %}<input type="hidden" name="model" value="{{ prefill_model }}">{% endif %}
+    <button class="secondary" type="submit">Scan network &amp; USB for printers</button>
+    <span class="muted small" style="align-self:center">takes about 10 seconds</span>
+  </form>
+  {% if env.vm %}<p class="small muted" style="margin:6px 0 0">On {{ env.vm }} the network scan can't see your LAN, so look the printer up by IP address below.</p>{% endif %}
+  <form method="get" action="{{ url_for('admin') }}" class="actions" style="margin-top:10px">
+    {% if prefill_model %}<input type="hidden" name="model" value="{{ prefill_model }}">{% endif %}
+    <input type="text" name="probe" value="{{ probe }}" placeholder="…or the printer's IP address / hostname, e.g. 192.168.1.50" style="flex:1;min-width:220px">
+    <button class="secondary" type="submit">Look up</button>
+  </form>
+  <p class="small muted" style="margin:4px 0 0">The IP address is shown on the printer's screen (usually Settings → Network) or on a printed network configuration page.</p>
+  {% if devices is not none %}
+    {% if devices %}
+    <div class="table-scroll" style="margin-top:10px"><table>
+      <tr><th>Device</th><th>URI</th><th></th></tr>
+      {% for d in devices %}
+      <tr><td>{{ d.info }}<br><span class="muted small">{{ d.model }}</span></td>
+          <td class="small"><code>{{ d.uri }}</code></td>
+          <td><a class="btn secondary" style="padding:3px 10px;font-size:13px"
+                 href="{{ url_for('admin', uri=d.uri, model=d.suggest or prefill_model) }}">Use</a></td></tr>
+      {% endfor %}
+    </table></div>
+    {% elif not probe %}<p class="muted">Nothing found. Look the printer up by IP address above.</p>{% endif %}
+  {% endif %}
+
+  <label>2. Pick a driver <span class="muted" style="font-weight:400">(optional — leave as <code>everywhere</code> for modern network printers)</span></label>
+  <form method="get" action="{{ url_for('admin') }}" class="actions">
+    {% if prefill_uri %}<input type="hidden" name="uri" value="{{ prefill_uri }}">{% endif %}
+    <input type="text" name="q" value="{{ q }}" placeholder="Search installed drivers, e.g. brother hl-l2350" style="flex:1;min-width:220px">
+    <button class="secondary" type="submit">Search drivers</button>
+  </form>
+  {% if ppds is not none %}
+    {% if ppds %}
+    <div class="table-scroll" style="margin-top:10px;max-height:300px;overflow-y:auto"><table>
+      {% for d in ppds %}
+      <tr><td class="small">{{ d.model }}<br><code class="muted">{{ d.name }}</code></td>
+          <td><a class="btn secondary" style="padding:3px 10px;font-size:13px"
+                 href="{{ url_for('admin', uri=prefill_uri, model=d.name, q=q) }}">Use</a></td></tr>
+      {% endfor %}
+    </table></div>
+    {% else %}<p class="muted">No installed driver matches “{{ q }}”. Install one in the <strong>Drivers</strong> section below, then search again.</p>{% endif %}
+  {% endif %}
+
+  <label>3. Create the queue</label>
+  <form method="post" action="{{ url_for('admin_add_printer') }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <div class="row">
+      <div><label for="name">Queue name</label>
+        <input id="name" type="text" name="name" required pattern="[A-Za-z0-9_\-]+" placeholder="Office_Laser"></div>
+      <div><label for="desc">Display name</label>
+        <input id="desc" type="text" name="desc" placeholder="Office laser printer"></div>
+      <div><label for="location">Location</label>
+        <input id="location" type="text" name="location" placeholder="Upstairs"></div>
+    </div>
+    <label for="uri">Device URI</label>
+    <input id="uri" type="text" name="uri" required value="{{ prefill_uri }}"
+           placeholder="ipp://192.168.1.50/ipp/print   socket://192.168.1.50:9100   usb://Brother/...">
+    <label for="model">Driver</label>
+    <input id="model" type="text" name="model" value="{{ prefill_model or 'everywhere' }}">
+    <div class="checks"><label><input type="checkbox" name="default" value="1"> Make this the default printer</label></div>
+    <button type="submit" style="margin-top:14px">Add printer</button>
+  </form>
+</div>
+
+<div class="card" id="inbox">
+  <h2>Scan to hub folder</h2>
+  {% if not inbox.enabled %}
+    <p>Off. To let people press <em>Scan</em> on the printer and have the file appear on the Scan page,
+      set <code>SCAN_INBOX_PASSWORD</code> (and <code>HUB_ADDRESS</code>) in <code>.env</code> and run <code>docker compose up -d</code>.</p>
+  {% else %}
+    <p class="muted small">Set this up once in the printer's own settings. Afterwards, pressing <strong>Scan → FTP</strong> on the printer
+      saves the scan here, and it appears under <em>Files</em> on the <a href="{{ url_for('scan') }}">Scan</a> page.</p>
+    {% if not hub_address %}
+      <div class="flash error">Set <code>HUB_ADDRESS</code> in <code>.env</code> to this computer's LAN IP address (the printer can't use “localhost”).</div>
+    {% endif %}
+
+    <div class="table-scroll"><table>
+      <tr><th colspan="2">FTP profile (enter these on the printer)</th></tr>
+      <tr><td>Host / server address</td><td><code>{{ hub_address or '(set HUB_ADDRESS)' }}</code></td></tr>
+      <tr><td>Port</td><td><code>{{ inbox.ftp_port }}</code></td></tr>
+      <tr><td>Username</td><td><code>{{ inbox.user }}</code></td></tr>
+      <tr><td>Password</td><td><details><summary class="small" style="font-weight:400">Show</summary><code>{{ inbox.password }}</code></details></td></tr>
+      <tr><td>Store directory</td><td><code>/</code> (or leave blank)</td></tr>
+      <tr><td>Passive mode</td><td><strong>On</strong></td></tr>
+      <tr><td>File type</td><td>PDF (multi-page) is easiest to use</td></tr>
+      {% if inbox.smb %}
+      <tr><th colspan="2">or SMB / “Scan to Network”</th></tr>
+      <tr><td>Network folder</td><td><code>\\{{ hub_address or 'hub' }}\scans</code>{% if inbox.smb_port != '445' %} (port {{ inbox.smb_port }}){% endif %}</td></tr>
+      <tr><td>Username / password</td><td>same as FTP</td></tr>
+      {% endif %}
+    </table></div>
+
+    <details style="margin-top:12px"><summary>Brother: where to enter this</summary><div class="small">
+      <ol>
+        <li>Open the printer's <strong>Device settings</strong> (link next to the printer above) and log in. The default password is on a label on the printer, marked “Pwd”.</li>
+        <li><strong>Scan → Scan to FTP/SFTP/Network/SharePoint</strong>: set Profile 1 to <strong>FTP</strong> and click Submit.</li>
+        <li><strong>Scan → Scan to FTP/SFTP/Network/SharePoint Profile → Profile 1</strong>: enter the values above. Name it “PrintScan Hub”.</li>
+        <li>On the printer: <strong>Scan → to FTP/SFTP → PrintScan Hub → Start</strong>.</li>
+      </ol>
+      <p>Other brands call this “Scan to FTP”, “Scan to Folder”, or “Address book → FTP destination”. The values are the same.</p>
+    </div></details>
+    {% if env.vm %}
+      <p class="small muted">Running on {{ env.vm }}: if the printer reports “Server timeout” or “Connection failed”, allow inbound ports
+        {{ inbox.ftp_port }} and 21100–21110 in Windows Firewall for Docker Desktop.</p>
+    {% endif %}
+  {% endif %}
+</div>
+
+<div class="card" id="drivers">
+  <h2>Drivers</h2>
+  <p class="muted small">Everything installed here is remembered in the <code>drivers/printer/</code> folder and re-installed automatically
+    when the container is rebuilt or updated. You can also just drop files into that folder and click <em>Re-install all</em>.</p>
+
+  <div class="row" style="gap:16px">
+    <form method="post" action="{{ url_for('admin_driver_upload') }}" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <label>Upload driver files <span class="pill" style="font-weight:500">max {{ max_driver_mb }} MB total</span></label>
+      <input type="file" name="files" multiple accept=".deb,.ppd,.gz,.sh" data-max-mb="{{ max_driver_mb }}">
+      <div class="size-hint small muted" aria-live="polite"></div>
+      <p class="muted small">Vendor <code>.deb</code> packages (Brother, Epson, Canon, Kyocera…), <code>.ppd</code>/<code>.ppd.gz</code> files,
+        or a <code>.sh</code> install script. Use the Linux “Debian / Ubuntu / .deb” download from the vendor site.</p>
+      <button type="submit">Upload &amp; install</button>
+    </form>
+    <div>
+      <form method="post" action="{{ url_for('admin_driver_apt') }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <label for="packages">Install Debian driver packages</label>
+        <input id="packages" type="text" name="packages" placeholder="printer-driver-brlaser printer-driver-splix">
+        <button type="submit" style="margin-top:8px">Install</button>
+      </form>
+      <form method="get" action="{{ url_for('admin_driver_search') }}">
+        <label for="term">Search for a driver package</label>
+        <div class="actions"><input id="term" type="text" name="term" placeholder="brother" style="flex:1">
+          <button class="secondary" type="submit">Search</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="actions" style="margin-top:16px">
+    <form class="inline" method="post" action="{{ url_for('admin_driver_sync') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button class="secondary">Re-install all from drivers folder</button>
+    </form>
+  </div>
+
+  <details style="margin-top:16px"><summary>Remembered Debian packages</summary>
+    <div><pre>{{ apt_list or '(none)' }}</pre></div></details>
+  <details style="margin-top:8px"><summary>Install log</summary>
+    <div><pre>{{ log_tail or '(empty)' }}</pre></div></details>
+</div>
+{% endblock %}

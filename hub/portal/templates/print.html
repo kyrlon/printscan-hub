@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% from "_status.html" import alerts, supplies, device_link %}
+{% block content %}
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+<div class="card">
+  <h1>Print a document</h1>
+  <p class="muted small">Nothing to install. Upload a file and it prints on the printer you pick.
+    Supported: {{ accepted|join(', ') }}{% if not has_office %} (save Office files as PDF first){% endif %}.</p>
+
+  {% if not printers %}
+    <p>No printers are set up yet. An administrator can add one on the <a href="{{ url_for('admin') }}">Admin</a> page.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('print_file') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label for="file">File <span class="pill" style="font-weight:500">max {{ max_mb }} MB</span></label>
+    <input id="file" type="file" name="file" required accept="{{ accepted|join(',') }}" data-max-mb="{{ max_mb }}">
+    <div class="size-hint small muted" aria-live="polite"></div>
+
+    <div class="row">
+      <div>
+        <label for="printer">Printer</label>
+        <select id="printer" name="printer" required>
+          {% for p in printers %}
+            <option value="{{ p.name }}" {% if p.default %}selected{% endif %}>{{ p.info }}{% if p.location %} ({{ p.location }}){% endif %}{% if p.state == 'stopped' %} [stopped]{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="copies">Copies</label>
+        <input id="copies" type="number" name="copies" value="1" min="1" max="99">
+      </div>
+      <div>
+        <label for="sides">Sides</label>
+        <select id="sides" name="sides">
+          <option value="one-sided">One-sided</option>
+          <option value="two-sided-long-edge">Two-sided (long edge)</option>
+          <option value="two-sided-short-edge">Two-sided (short edge)</option>
+        </select>
+      </div>
+      <div>
+        <label for="color">Color</label>
+        <select id="color" name="color">
+          <option value="">Printer default</option>
+          <option value="color">Color</option>
+          <option value="monochrome">Black &amp; white</option>
+        </select>
+      </div>
+      <div>
+        <label for="pages">Pages</label>
+        <input id="pages" type="text" name="pages" placeholder="All (e.g. 1-3,5)">
+      </div>
+      <div>
+        <label for="user">Your name <span class="muted">(optional)</span></label>
+        <input id="user" type="text" name="user" maxlength="64" placeholder="shown in the queue">
+      </div>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" name="fit" value="1" checked> Fit to page</label>
+      <label><input type="checkbox" name="landscape" value="1"> Landscape</label>
+    </div>
+    <button class="primary-action" type="submit">Print</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if printers %}
+<div class="card">
+  <h2>Printers</h2>
+  <div class="table-scroll"><table>
+    <tr><th>Printer</th><th>Status</th><th>Toner / ink</th><th>Add to your computer</th></tr>
+    {% for p in printers %}
+    <tr>
+      <td><strong>{{ p.info }}</strong>{% if p.default %} <span class="pill">default</span>{% endif %}<br>
+          <span class="muted small">{{ p.model }}{% if p.location %} · {{ p.location }}{% endif %}</span><br>
+          {{ device_link(p.web) }}</td>
+      <td><span class="pill {{ p.state }}">{{ p.state }}</span><br>{{ alerts(p) }}
+          {% if p.message and not p.alerts %}<br><span class="muted small">{{ p.message }}</span>{% endif %}</td>
+      <td>{{ supplies(p) }}</td>
+      <td><code>{{ ipp_base }}{{ p.name }}</code></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  <details style="margin-top:14px">
+    <summary>How to add a printer to your computer without vendor drivers</summary>
+    <div class="small">
+      <p><strong>Windows 10/11:</strong> Settings → Bluetooth &amp; devices → Printers &amp; scanners → Add device.
+        If it does not show up: “Add manually” → “Select a shared printer by name” → paste the address above.
+        When Windows asks for a driver, choose <em>Microsoft IPP Class Driver</em>.</p>
+      <p><strong>macOS / iPhone / iPad:</strong> The printers show up automatically as AirPrint printers.</p>
+      <p><strong>Android / ChromeOS:</strong> They appear through the built-in Default Print Service / Mopria.</p>
+      <p><strong>Not allowed to add printers?</strong> Use the upload form at the top of this page.</p>
+    </div>
+  </details>
+</div>
+{% endif %}
+
+{% if scanners %}
+<div class="card">
+  <h2>Scanners</h2>
+  <div class="table-scroll"><table>
+    {% for s in scanners %}
+    <tr>
+      <td><strong>{{ s.name }}</strong></td>
+      <td style="text-align:right"><div class="actions" style="justify-content:flex-end;align-items:center">
+        {{ device_link(s.web) }}
+        <a class="btn secondary" style="padding:3px 12px;font-size:13px" href="{{ url_for('scan') }}">Scan</a>
+      </div></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% if inbox.enabled %}
+  <p class="muted small" style="margin:12px 0 0">You can also scan from the printer itself: press <strong>Scan → FTP</strong>
+    (or <em>Network</em>) on its screen. The file shows up under <em>Files</em> on the <a href="{{ url_for('scan') }}">Scan</a> page.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if jobs %}
+<div class="card">
+  <h2>Recent jobs</h2>
+  <div class="table-scroll"><table>
+    <tr><th>#</th><th>Document</th><th>Printer</th><th>By</th><th>When</th><th>Status</th><th></th></tr>
+    {% for j in jobs %}
+    <tr>
+      <td>{{ j.id }}</td><td>{{ j.name }}</td><td>{{ j.printer }}</td><td>{{ j.user }}</td>
+      <td class="muted">{{ j.when }}</td><td><span class="pill {{ j.state }}">{{ j.state }}</span></td>
+      <td>{% if j.active %}
+        <form class="inline" method="post" action="{{ url_for('cancel_job', job_id=j.id) }}">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <button class="sm danger">Cancel</button>
+        </form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}
