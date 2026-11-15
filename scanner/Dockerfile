@@ -22,6 +22,11 @@ RUN sed -i -E 's/("btn-scan":[^,]*\(\[)(["`])Scan\2\]/\1\2Scan now\2]/g' /usr/li
 RUN sed -i 's/this\.params\.source=\([A-Za-z_$]*\)\.params\.source||\([A-Za-z_$]*\)\.features\["--source"\]\.default/this.params.source=(\2.features["--source"].hubForceDefault?null:\1.params.source)||\2.features["--source"].default/' /usr/lib/scanservjs/client/assets/index-*.js \
     && grep -q 'hubForceDefault' /usr/lib/scanservjs/client/assets/index-*.js
 
+# Use sane-airscan only for driverless scanners: SANE's older built-in "escl"
+# backend finds the same devices again, so every scanner was listed 2-3 times.
+RUN sed -i 's/^escl$/#escl  (disabled: sane-airscan handles eSCL)/' /etc/sane.d/dll.conf \
+    && ! grep -qx escl /etc/sane.d/dll.conf
+
 # Hover descriptions for the scan settings, and the feeder status shown under
 # the Device field.
 COPY scanner/hub-tooltips.js scanner/hub-feeder.js /usr/lib/scanservjs/client/

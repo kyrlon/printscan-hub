@@ -30,10 +30,10 @@ const esclUrls = {};
   if (m) esclUrls[m[1].trim()] = m[2];
 });
 function discover() {
-  // Lists '"Name" = http://host/eSCL/, eSCL' for scanners found on the network.
+  // Lists 'Name = http://host/eSCL/, eSCL' (name may or may not be quoted).
   execFile('airscan-discover', { timeout: 20000 }, (err, stdout) => {
     (stdout || '').split('\n').forEach(line => {
-      const m = line.match(/^\s*"([^"]+)"\s*=\s*([^,\s]+)\s*,\s*escl/i);
+      const m = line.match(/^\s*"?(.+?)"?\s*=\s*(\S+?)\s*,\s*escl\s*$/i);
       if (m && !esclUrls[m[1]]) esclUrls[m[1]] = m[2];
     });
   });
