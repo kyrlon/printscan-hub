@@ -244,7 +244,7 @@ Set `AVAHI=off` to turn discovery off.
 | Printer | Connection | Driver | Print from portal | Driverless clients (IPP) | Toner / status | Notes |
 |---|---|---|---|---|---|---|
 | Brother MFC-L3780CDW | Network (Wi-Fi/Ethernet) | `everywhere` (no driver) | ✅ text, Word (.docx), test page | ➖ | ✅ live CMYK levels | Added by IP address on Docker Desktop |
-| HP ENVY Photo 7100 | USB, via `ipp-usb` on a Debian 13 host | `everywhere` (no driver), URI `ipp://localhost:60000/ipp/print` | ➖ | ➖ | ✅ tri-color + black ink, paper-out notice | Also on Wi-Fi; no Settings link when reached over USB |
+| HP ENVY Photo 7100 | USB, via `ipp-usb` on a Debian 13 host | `everywhere` (no driver), URI `ipp://localhost:60000/ipp/print` | ✅ test page (Print page button) | ➖ | ✅ tri-color + black ink; "Photo tray empty" shown per tray | Also on Wi-Fi; no Settings link when reached over USB. One early test page was reported "completed" by the printer but never came out, right as it flagged its empty photo tray |
 
 ### Scanners
 
