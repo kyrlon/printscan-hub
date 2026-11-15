@@ -223,7 +223,7 @@ def parse_supplies(a):
         low = lows[i] if i < len(lows) else 10
         kind = types[i] if i < len(types) else ""
         out.append({
-            "label": MARKER_LABELS.get(n.lower(), n),
+            "label": MARKER_LABELS.get(n.lower(), n[:1].upper() + n[1:]),
             "level": lvl if lvl >= 0 else None,       # -1/-2 unknown, -3 "some left"
             "some": lvl == -3,
             "low": 0 <= lvl <= low,
@@ -280,12 +280,15 @@ def printer_status(c, name, uri):
     if reachable is False:
         alerts.insert(0, {"text": f"Not responding at {host}", "sev": "error"})
 
+    # Printers reached via localhost (e.g. USB through ipp-usb) only serve their
+    # web page to the hub itself, so a link would just point back at the hub.
+    local = (host or "").strip("[]") in ("localhost", "127.0.0.1", "::1")
     web = None
     more = attrs.get("printer-more-info", "") if live else ""
     m = re.match(r"^(https?://[^/]+)", more or "")
-    if m and "localhost" not in m.group(1):
+    if m and not re.search(r"//(localhost|127\.0\.0\.1|\[::1\])", m.group(1)):
         web = m.group(1) + "/"
-    elif host:
+    elif host and not local:
         web = f"http://{host}/"
 
     status = {"supplies": parse_supplies(attrs), "alerts": alerts, "web": web, "live": live}
