@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import urllib.parse
 from functools import wraps
 from pathlib import Path
 
@@ -182,7 +183,8 @@ def require_admin(view):
 
 
 STATUS_ATTRS = ["marker-names", "marker-levels", "marker-colors", "marker-types",
-                "marker-low-levels", "printer-state-reasons", "printer-more-info"]
+                "marker-low-levels", "printer-state-reasons", "printer-more-info",
+                "printer-make-and-model"]
 MARKER_LABELS = {"bk": "Black", "k": "Black", "black": "Black", "c": "Cyan", "cyan": "Cyan",
                  "m": "Magenta", "magenta": "Magenta", "y": "Yellow", "yellow": "Yellow"}
 REASON_TEXT = {
@@ -348,7 +350,11 @@ def printer_status(c, name, uri):
     elif host and not local:
         web = f"http://{host}/"
 
-    status = {"supplies": parse_supplies(attrs), "alerts": alerts, "web": web, "live": live}
+    # The real model, straight from the device. Queues made with the generic
+    # "everywhere" driver may only say "Printer - IPP Everywhere".
+    device_model = attrs.get("printer-make-and-model") if live else None
+    status = {"supplies": parse_supplies(attrs), "alerts": alerts, "web": web, "live": live,
+              "device_model": device_model}
     _status_cache[(name, uri)] = (time.time(), status)
     return status
 
@@ -466,14 +472,15 @@ def queue_for_device(dev, printers):
     uri = dev["uri"]
     host, _ = device_host_port(uri)
     host = (host or "").strip("[]")
-    dev_usb = "(usb)" in (dev.get("info") or "").lower() or uri.startswith(("usb:", "hp:/usb")) or host in local
+    dev_usb = ("(usb)" in (dev.get("info") or "").lower() or "(usb)" in urllib.parse.unquote(uri).lower()
+               or uri.startswith(("usb:", "hp:/usb")) or host in local)
     for p in printers:
         p_host = (device_host_port(p["uri"])[0] or "").strip("[]")
         if uri == p["uri"] or (host and host == p_host and host not in local):
             return p["name"]
     model = (dev.get("model") or dev.get("info") or "").lower().strip()
     for p in printers:
-        p_model = (p.get("model") or "").lower()
+        p_model = (p.get("device_model") or p.get("model") or "").lower()
         p_host = (device_host_port(p["uri"])[0] or "").strip("[]")
         p_usb = p["uri"].startswith(("usb:", "hp:/usb")) or p_host in local
         if model and len(model) > 4 and p_model and (model in p_model or p_model.split(",")[0] in model) \
@@ -832,7 +839,9 @@ def admin():
             d["added_as"] = queue_for_device(d, printers)
         if request.args.get("discover") and not request.args.get("all"):
             hidden_added = sum(1 for d in devices if d["added_as"])
-            devices = [d for d in devices if not d["added_as"]]
+            # Serial ports and the braille driver aren't printers people want here.
+            devices = [d for d in devices if not d["added_as"]
+                       and not d["uri"].startswith(("serial:", "cups-brf:"))]
 
     q = request.args.get("q", "").strip()
     if q:

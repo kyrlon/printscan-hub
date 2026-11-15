@@ -35,7 +35,7 @@
     {% for p in printers %}
     <tr>
       <td><strong>{{ p.info }}</strong>{% if p.default %} <span class="pill">default</span>{% endif %}<br>
-          <span class="muted small">{{ p.location or p.model }}</span></td>
+          <span class="muted small">{{ p.location or (p.device_model or p.model) }}</span></td>
       <td><span class="pill {{ p.state }}">{{ p.state }}</span><br>{{ alerts(p) }}</td>
       <td>{{ supplies(p) }}</td>
       <td style="text-align:right">{{ device_link(p.web, "Settings") }}</td>

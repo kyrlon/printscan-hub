@@ -72,7 +72,7 @@
     {% for p in printers %}
     <tr>
       <td><strong>{{ p.info }}</strong>{% if p.default %} <span class="pill">default</span>{% endif %}<br>
-          <span class="muted small">{{ p.model }}{% if p.location %} · {{ p.location }}{% endif %}</span><br>
+          <span class="muted small">{{ (p.device_model or p.model) }}{% if p.location %} · {{ p.location }}{% endif %}</span><br>
           {{ device_link(p.web) }}</td>
       <td><span class="pill {{ p.state }}">{{ p.state }}</span><br>{{ alerts(p) }}
           {% if p.message and not p.alerts %}<br><span class="muted small">{{ p.message }}</span>{% endif %}
