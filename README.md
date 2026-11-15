@@ -173,6 +173,55 @@ Most network scanners from the last ~8 years work with no driver through eSCL/Ai
 `docker compose restart scanner`. If a network scanner isn't detected, set
 `SANED_NET_HOSTS`, `AIRSCAN_DEVICES` or `PIXMA_HOSTS` in `.env`.
 
+## How scanning works
+
+```
+Browser ──► hub portal (/scan/app/) ──► scanservjs ──► scanimage (SANE) ──► backends ──► scanner
+             hides others' private      web UI + API    the scanning tool    airscan, USB, hpaio…
+             files
+```
+
+- **scanservjs** is a small Node.js web app. It doesn't talk to scanners itself: it runs SANE's
+  `scanimage` to list scanners, read their options and scan.
+- **SANE backends** (listed in `/etc/sane.d/dll.conf`) do the talking: **sane-airscan** for driverless
+  network and IPP-over-USB scanners (eSCL/WSD), USB backends such as `epson2` or `genesys`, `net` for
+  scanners shared by another Linux machine, and `hpaio` if you add `hplip` to `drivers/scanner/`.
+  SANE's older `escl` backend is turned off because it listed every driverless scanner a second time.
+- **Scanning and printing find devices separately.** Printers come from CUPS in the `hub` container;
+  scanners come from SANE in the `scanner` container. An all-in-one appears in both, and adding a
+  printer on the Admin page has no effect on the Scan page.
+
+### When are scanners detected?
+
+Not continuously. The first time the scan page loads after the scanner container starts, scanservjs
+runs `scanimage -L` and asks each scanner for its options. That takes a few seconds to half a minute,
+and the result is cached. Later page loads use the cache. It searches again when you press **↻** next
+to *Device*, or when the scanner container restarts. **Plugged in or switched on a scanner later? Press ↻.**
+
+Whether network scanners are found automatically depends on the host:
+
+| Host | Network scanners | How |
+|---|---|---|
+| Linux | ✅ found automatically | sane-airscan hears Bonjour/mDNS announcements (through the host's Avahi) and sends WSD probes. USB devices shared by `ipp-usb` show up with "(USB)" |
+| Docker Desktop | ❌ list them yourself | Announcements don't reach Docker's VM: add `AIRSCAN_DEVICES` to `.env` |
+
+Scanners listed in `AIRSCAN_DEVICES`, `SANED_NET_HOSTS` or `PIXMA_HOSTS` are always included.
+In a name like `airscan:e1:…`, `e` means eSCL (`w` = WSD) and the number is just its position.
+
+### What happens on Scan now
+
+1. The page sends the settings (device, source, resolution, area, mode, format) to the scan API.
+2. scanservjs runs `scanimage`; the raw image goes to a temporary folder.
+3. A pipeline converts it to the chosen format (JPG, PNG, PDF, or PDF with text recognition).
+4. The file is saved in `scans/` and its name returned. In a private mode, the portal records who owns it.
+
+**Preview** is a quick low-resolution scan that isn't saved; drag the box on it to set the scan area.
+
+The hub's additions (Letter default, automatic Source, the feeder status under *Device*) run in
+scanservjs' settings hook (`scanservjs/config/config.local.js`) on **every** page load, not only after a
+search. The feeder state is a live question to the scanner (`/eSCL/ScannerStatus`), so it updates
+without pressing ↻.
+
 ## Glass or document feeder?
 
 The **Source** list on the Scan page comes from each scanner, so it differs by device:
