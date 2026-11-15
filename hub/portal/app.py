@@ -5,6 +5,7 @@ Admin:   add/remove printers, discover devices, install drivers.
 """
 import hashlib
 import hmac
+import json
 import os
 import re
 import secrets
@@ -18,6 +19,7 @@ from functools import wraps
 from pathlib import Path
 
 import cups
+import requests
 from flask import (Flask, Response, abort, flash, redirect, render_template,
                    request, session, url_for)
 from werkzeug.utils import secure_filename
@@ -351,6 +353,51 @@ def printer_status(c, name, uri):
     return status
 
 
+SHARED_DIR = Path(os.environ.get("HUB_SHARED_DIR", "/data/shared"))
+
+
+def hidden_scanners():
+    try:
+        return set(json.loads((SHARED_DIR / "scanners-hidden.json").read_text()).get("hidden", []))
+    except (OSError, ValueError):
+        return set()
+
+
+def save_hidden_scanners(keys):
+    SHARED_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = SHARED_DIR / "scanners-hidden.json.tmp"
+    tmp.write_text(json.dumps({"hidden": sorted(keys)}, indent=1))
+    tmp.replace(SHARED_DIR / "scanners-hidden.json")
+
+
+def detected_scanners():
+    """What the scan app (SANE) found, as reported by the scanner container."""
+    try:
+        data = json.loads((SHARED_DIR / "scanners-detected.json").read_text())
+    except (OSError, ValueError):
+        return None, None
+    hidden = hidden_scanners()
+    out = []
+    for d in data.get("devices", []):
+        url = d.get("url") or ""
+        host, _ = device_host_port(url) if url else (None, None)
+        prefix = d.get("id", "").split(":")[0]
+        if host and host.strip("[]") in ("localhost", "127.0.0.1", "::1"):
+            conn_label = "USB (shared by ipp-usb)"
+        elif host:
+            conn_label = f"Network ({host.strip('[]')})"
+        elif prefix == "airscan":
+            conn_label = "Network"
+        elif prefix == "net":
+            conn_label = "Shared by another computer"
+        else:
+            conn_label = f"USB / local ({prefix} driver)"
+        res = [r for r in d.get("resolutions", []) if isinstance(r, (int, float))]
+        out.append({**d, "hidden": d.get("key") in hidden, "connection": conn_label,
+                    "res_range": f"{min(res)}–{max(res)} dpi" if res else ""})
+    return out, data.get("updated", "")
+
+
 def list_scanners():
     """Scanners configured in .env (AIRSCAN_DEVICES), with their device web pages."""
     raw = os.environ.get("AIRSCAN_DEVICES", "")
@@ -366,7 +413,19 @@ def list_scanners():
     return out
 
 
-def list_printers(details=True):
+DISABLED_REASON = "Disabled by admin"
+CUPS_PRINTER_REJECTING = cups.CUPS_PRINTER_REJECTING   # 0x80000, a bit in printer-type
+
+
+def is_rejecting(attrs):
+    """True if the queue isn't accepting jobs. getPrinters() omits
+    printer-is-accepting-jobs, but printer-type carries it as a bit."""
+    return bool(attrs.get("printer-type", 0) & CUPS_PRINTER_REJECTING)
+
+
+def list_printers(details=True, include_disabled=True):
+    """CUPS queues. Public pages pass include_disabled=False to leave out
+    printers an admin switched off (Disable on the Admin page)."""
     c = conn()
     printers = c.getPrinters()
     try:
@@ -375,7 +434,10 @@ def list_printers(details=True):
         default = None
     out = []
     for name, a in sorted(printers.items()):
-        status = printer_status(c, name, a.get("device-uri", "")) if details else {}
+        disabled = is_rejecting(a)
+        if disabled and not include_disabled:
+            continue
+        status = printer_status(c, name, a.get("device-uri", "")) if details and not disabled else {}
         out.append({
             **status,
             "name": name,
@@ -385,11 +447,39 @@ def list_printers(details=True):
             "uri": a.get("device-uri", ""),
             "state": PRINTER_STATES.get(a.get("printer-state"), "?"),
             "message": a.get("printer-state-message", ""),
-            "accepting": a.get("printer-is-accepting-jobs", True),
+            "accepting": not disabled,
+            "disabled": disabled,
             "shared": a.get("printer-is-shared", True),
             "default": name == default,
         })
     return out
+
+
+def queue_for_device(dev, printers):
+    """Name of an existing queue that already uses this discovered device, or None.
+
+    One printer can be discovered under several addresses (dnssd name, IP, USB),
+    so compare the exact URI, then the host, then the model + connection type
+    (USB via ipp-usb vs network count as different devices).
+    """
+    local = ("localhost", "127.0.0.1", "::1")
+    uri = dev["uri"]
+    host, _ = device_host_port(uri)
+    host = (host or "").strip("[]")
+    dev_usb = "(usb)" in (dev.get("info") or "").lower() or uri.startswith(("usb:", "hp:/usb")) or host in local
+    for p in printers:
+        p_host = (device_host_port(p["uri"])[0] or "").strip("[]")
+        if uri == p["uri"] or (host and host == p_host and host not in local):
+            return p["name"]
+    model = (dev.get("model") or dev.get("info") or "").lower().strip()
+    for p in printers:
+        p_model = (p.get("model") or "").lower()
+        p_host = (device_host_port(p["uri"])[0] or "").strip("[]")
+        p_usb = p["uri"].startswith(("usb:", "hp:/usb")) or p_host in local
+        if model and len(model) > 4 and p_model and (model in p_model or p_model.split(",")[0] in model) \
+                and dev_usb == p_usb:
+            return p["name"]
+    return None
 
 
 def list_jobs(limit=15):
@@ -506,7 +596,7 @@ def favicon():
 def index():
     """Home: big Print / Scan buttons plus a quick status overview."""
     try:
-        printers, err = list_printers(), None
+        printers, err = list_printers(include_disabled=False), None
     except (RuntimeError, cups.IPPError) as e:
         printers, err = [], f"Cannot reach CUPS: {e}"
     return render_template("home.html", printers=printers, error=err, scanners=list_scanners())
@@ -515,7 +605,7 @@ def index():
 @app.get("/print")
 def print_page():
     try:
-        printers, jobs, err = list_printers(), list_jobs(), None
+        printers, jobs, err = list_printers(include_disabled=False), list_jobs(), None
     except (RuntimeError, cups.IPPError) as e:
         printers, jobs, err = [], [], f"Cannot reach CUPS: {e}"
     return render_template("print.html", printers=printers, jobs=jobs, error=err,
@@ -666,7 +756,7 @@ def print_file():
             flash(f"Printer rejected the job: {e.args[-1] if e.args else e}", "error")
             return redirect(url_for("print_page"))
 
-    flash(f"Sent â€œ{filename}â€ to {printer} (job {job}).", "ok")
+    flash(f"Sent \u201c{filename}\u201d to {printer} (job {job}).", "ok")
     return redirect(url_for("print_page"))
 
 
@@ -677,7 +767,8 @@ def print_test_page(name):
         abort(404)
     try:
         c = conn()
-        if name not in c.getPrinters():
+        queues = c.getPrinters()
+        if name not in queues or is_rejecting(queues[name]):
             abort(404)
         with _cups_user_lock:
             cups.setUser("test-page")
@@ -730,9 +821,18 @@ def admin():
                     flash(f"No printer services answered at {probe} (checked ports 631, 9100, 515).", "error")
             except socket.gaierror:
                 devices = []
-                flash(f"The hub couldn't resolve the name â€œ{probe}â€. Use the printer's IP address instead.", "error")
+                flash(f"The hub couldn't resolve the name \u201c{probe}\u201d. Use the printer's IP address instead.", "error")
         else:
             flash("Enter an IP address or hostname, e.g. 192.168.1.50", "error")
+
+    # Mark devices that already have a queue; the scan list hides them unless ?all=1.
+    hidden_added = 0
+    if devices:
+        for d in devices:
+            d["added_as"] = queue_for_device(d, printers)
+        if request.args.get("discover") and not request.args.get("all"):
+            hidden_added = sum(1 for d in devices if d["added_as"])
+            devices = [d for d in devices if not d["added_as"]]
 
     q = request.args.get("q", "").strip()
     if q:
@@ -751,6 +851,8 @@ def admin():
     return render_template(
         "admin.html", printers=printers, devices=devices, ppds=ppds, q=q, probe=probe,
         users=store.list_users(), allow_signup=ALLOW_SIGNUP, limits=scanproxy.LIMITS,
+        scanners=detected_scanners()[0], scanners_updated=detected_scanners()[1],
+        hidden_added=hidden_added, show_all=bool(request.args.get("all")),
         prefill_uri=request.args.get("uri", ""), prefill_model=request.args.get("model", ""),
         log_tail=log_tail, weak_password=ADMIN_PASSWORD in ("changeme", "admin", "password"),
         apt_list=(DRIVERS_DIR / "apt-packages.txt").read_text() if (DRIVERS_DIR / "apt-packages.txt").exists() else "",
@@ -780,7 +882,7 @@ def admin_add_printer():
         cmd += ["-L", loc]
     p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if p.returncode != 0:
-        hint = (" The printer did not answer as an IPP Everywhere device â€” pick a specific driver instead."
+        hint = (" The printer did not answer as an IPP Everywhere device, so pick a specific driver instead."
                 if model == "everywhere" else "")
         flash(f"Adding printer failed: {(p.stderr or p.stdout).strip()}{hint}", "error")
         return redirect(url_for("admin", uri=uri, model=model))
@@ -813,6 +915,18 @@ def admin_printer_action(name, action):
             c.enablePrinter(name)
             c.acceptJobs(name)
             flash(f"{name} resumed.", "ok")
+        elif action == "disable":
+            # Keep the queue and its settings, but stop jobs, hide it from the
+            # Home/Print pages and stop offering it to laptops on the network.
+            c.rejectJobs(name, reason=DISABLED_REASON)
+            c.disablePrinter(name, reason=DISABLED_REASON)
+            c.setPrinterShared(name, False)
+            flash(f"{name} is disabled: hidden from the Print page and not shared. Enable it any time.", "ok")
+        elif action == "enable":
+            c.enablePrinter(name)
+            c.acceptJobs(name)
+            c.setPrinterShared(name, True)
+            flash(f"{name} is enabled and shared again.", "ok")
         else:
             abort(404)
     except cups.IPPError as e:
@@ -869,6 +983,44 @@ def admin_driver_search():
         return redirect(url_for("admin"))
     rc, out = run_hub_driver("search", term, timeout=300)
     return render_template("result.html", title=f"Driver search: {term}", ok=True, output=out)
+
+
+@app.post("/admin/scanners/refresh")
+@require_admin
+def admin_scanners_refresh():
+    """Make the scan app search for scanners again (same as ↻ on the Scan page)."""
+    try:
+        requests.delete(scanproxy.SCANNER_URL + "/api/v1/context", timeout=15)
+        r = requests.get(scanproxy.SCANNER_URL + "/api/v1/context", timeout=240)
+        found = len(r.json().get("devices", []))
+        devices, _ = detected_scanners()
+        total = len(devices) if devices is not None else found
+        flash(f"Scanner search finished: {total} found ({found} shown on the Scan page).", "ok")
+    except (requests.RequestException, ValueError) as e:
+        flash(f"Couldn't reach the scan app: {e}", "error")
+    return redirect(url_for("admin") + "#scanners")
+
+
+@app.post("/admin/scanners/<action>")
+@require_admin
+def admin_scanner_visibility(action):
+    key = request.form.get("key", "")
+    devices, _ = detected_scanners()
+    known = {d["key"] for d in devices or []}
+    if action not in ("hide", "show") or key not in known:
+        abort(404)
+    hidden = hidden_scanners()
+    if action == "hide":
+        if len(known - hidden - {key}) == 0:
+            flash("At least one scanner has to stay visible on the Scan page.", "error")
+            return redirect(url_for("admin") + "#scanners")
+        hidden.add(key)
+    else:
+        hidden.discard(key)
+    save_hidden_scanners(hidden)
+    name = next(d["name"] for d in devices if d["key"] == key)
+    flash(f"{name} is now {'hidden from' if action == 'hide' else 'shown on'} the Scan page.", "ok")
+    return redirect(url_for("admin") + "#scanners")
 
 
 @app.post("/admin/users/add")

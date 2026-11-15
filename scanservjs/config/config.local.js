@@ -2,6 +2,48 @@
 // See https://github.com/sbs20/scanservjs/blob/master/packages/server/src/config.js
 // for all available options.
 const { execFile, execFileSync } = require('child_process');
+const fs = require('fs');
+
+// Folder shared with the hub (./data/shared): we write what was detected, the
+// hub's Admin page writes which scanners to hide.
+const SHARED = process.env.HUB_SHARED_DIR || '/hub-shared';
+// Device ids carry a position ("airscan:e1:Name") that can change between
+// searches; hide by the id without it ("airscan:Name").
+const stableKey = id => id.replace(/^([a-z0-9]+):[ew]\d+:/i, '$1:');
+let lastDetected = '';
+
+function readHidden() {
+  try {
+    return new Set(JSON.parse(fs.readFileSync(`${SHARED}/scanners-hidden.json`, 'utf8')).hidden || []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function writeDetected(devices, hidden) {
+  const list = devices.map(d => {
+    const name = d.id.split(':').slice(2).join(':') || d.id;
+    const src = d.features['--source'], res = d.features['--resolution'];
+    return {
+      id: d.id, key: stableKey(d.id), name,
+      url: esclUrls[name] || esclUrls[name.replace(/_/g, ' ')] || null,
+      sources: (src && src.options) || [],
+      resolutions: (res && res.options) || [],
+      feeder: (src && src.hubFeeder) || null,
+      hidden: hidden.has(stableKey(d.id)),
+    };
+  });
+  const s = JSON.stringify(list);
+  if (s === lastDetected) return;              // only write when something changed
+  try {
+    fs.mkdirSync(SHARED, { recursive: true });
+    fs.writeFileSync(`${SHARED}/scanners-detected.json`,
+                     JSON.stringify({ updated: new Date().toISOString(), devices: list }, null, 1));
+    lastDetected = s;
+  } catch (e) {
+    console.warn(`Couldn't write ${SHARED}/scanners-detected.json: ${e.message}`);
+  }
+}
 
 // Default scan area per paper size, in millimetres (SCAN_DEFAULT_PAPER in .env).
 const PAPER = {
@@ -100,14 +142,16 @@ module.exports = {
     // config.defaultOutputFilename = 'scan-{date}-{time}';
   },
 
-  // Runs every time the scan page loads.
+  // Runs every time the scan page loads (on a fresh copy of the cached device list).
   afterDevices(devices) {
     const key = (process.env.SCAN_DEFAULT_PAPER || 'letter').toLowerCase();
     const size = PAPER[key];
     if (size === undefined) {
       console.warn(`SCAN_DEFAULT_PAPER=${key} is unknown; use one of ${Object.keys(PAPER).join(', ')}`);
     }
+    const hidden = readHidden();
     devices.forEach(device => {
+      if (hidden.has(stableKey(device.id))) return;   // hidden: skip the feeder check etc.
       if (size) {
         ['-x', '-y'].forEach((name, i) => {
           const feature = device.features[name];
@@ -121,5 +165,13 @@ module.exports = {
       }
       applySource(device);
     });
+
+    // Tell the hub what we found, then drop hidden scanners from the Scan page.
+    // Never hide them all: the scan page needs at least one device.
+    writeDetected(devices, hidden);
+    const visible = devices.filter(d => !hidden.has(stableKey(d.id)));
+    if (visible.length && visible.length < devices.length) {
+      devices.splice(0, devices.length, ...visible);
+    }
   }
 };
