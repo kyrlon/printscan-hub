@@ -107,7 +107,7 @@ flatbed-only models show just *Flatbed*, and models with a feeder add *ADF*, *AD
 
 | Value | Behaviour |
 |---|---|
-| `auto` (default) | Feeder if it has paper, otherwise the glass. Checked each time the scan page loads; the Scan page shows the feeder state and offers **Refresh scanner** if you load paper afterwards |
+| `auto` (default) | Feeder if it has paper, otherwise the glass. Checked each time the scan page loads. The feeder state for the selected device shows under **Device**, with a **Switch to feeder/glass** button if you load or remove paper afterwards |
 | `auto-duplex` | Same as `auto`, but both sides when using the feeder |
 | `flatbed` / `adf` / `duplex` | Always start there |
 | `remember` | Whatever was used last time in that browser |
@@ -155,7 +155,7 @@ Set `AVAHI=off` to turn discovery off.
 
 | Scanner | Connection | Backend | Browser scan | Scan from printer to hub folder (FTP) | Notes |
 |---|---|---|---|---|---|
-| Brother MFC-L3780CDW | Network | `sane-airscan` (eSCL, no driver) | ✅ flatbed | ➖ | Reports Flatbed, ADF, ADF Duplex at 100–600 dpi; ADF not tried yet. Needs `AIRSCAN_DEVICES` on Docker Desktop |
+| Brother MFC-L3780CDW | Network | `sane-airscan` (eSCL, no driver) | ✅ flatbed | ➖ | Reports Flatbed, ADF, ADF Duplex at 100–600 dpi. Feeder detection ✅ (auto-selects ADF when loaded); scanning through the ADF not tried yet. Needs `AIRSCAN_DEVICES` on Docker Desktop |
 
 ### Hosts
 
@@ -201,6 +201,22 @@ The first start after a rebuild takes longer while the drivers install.
 - Don't expose ports 80/631/8080 to the internet.
 - To shrink the image by ~400 MB, set `INSTALL_OFFICE=false` in `.env` and rebuild.
   Office files then have to be saved as PDF before uploading.
+
+## To-do: Home Assistant
+
+Ideas for connecting the hub to [Home Assistant](https://www.home-assistant.io/). None of these are built or tested yet.
+
+- [ ] **Printer status and toner sensors.** Try HA's built-in *Internet Printing Protocol (IPP)* integration
+      pointed at a hub queue (`<server>`, port `631`, path `/printers/<queue>`), or at the printer directly. Document what works.
+- [ ] **Hub status endpoint.** A JSON `/api/status` on the portal (printers, toner, alerts, feeder state, recent jobs)
+      for HA `rest` sensors.
+- [ ] **Alerts.** Example HA automations: notify a phone on *toner low*, *out of paper* or *paper jam*.
+- [ ] **Feeder sensor.** A binary sensor for "paper in the document feeder", using the same eSCL check as the Scan page.
+- [ ] **Scan from HA.** A `rest_command` or dashboard button that starts a scan through the scanservjs API
+      (`POST /api/v1/scan`), e.g. "scan to PDF from the feeder".
+- [ ] **New-scan notifications.** Notify HA (webhook) when a file lands in `scans/`, including scans sent from the printer's own Scan button.
+- [ ] **Print from HA.** Send a file or generated text (shopping list, chore chart) to a printer through the portal.
+- [ ] **Packaging.** An HA add-on (Supervisor) or MQTT discovery so the hub's entities appear automatically.
 
 ## Help: terms explained
 

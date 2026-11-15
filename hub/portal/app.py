@@ -291,23 +291,8 @@ def list_scanners():
             continue
         host, _ = device_host_port(url)
         out.append({"name": name.strip().strip('"').replace("_", " "),
-                    "web": f"http://{host}/" if host else None,
-                    "escl": url if "escl" in rest.lower() else None})
+                    "web": f"http://{host}/" if host else None})
     return out
-
-
-def feeder_state(escl_url):
-    """'loaded', 'empty' or None, from the scanner's eSCL status."""
-    import urllib.request
-    try:
-        with urllib.request.urlopen(escl_url.rstrip("/") + "/ScannerStatus", timeout=2) as r:
-            xml = r.read(65536).decode("utf-8", "replace")
-    except (OSError, ValueError):
-        return None
-    m = re.search(r"<scan:AdfState>([^<]+)<", xml)
-    if not m:
-        return None
-    return "loaded" if m.group(1) == "ScannerAdfLoaded" else "empty"
 
 
 def list_printers(details=True):
@@ -469,15 +454,7 @@ def print_page():
 
 @app.get("/scan")
 def scan():
-    return render_template("scan.html", scanners=list_scanners(),
-                           source_mode=os.environ.get("SCAN_DEFAULT_SOURCE", "auto").lower())
-
-
-@app.get("/api/feeder")
-def api_feeder():
-    """Feeder (ADF) paper state for each scanner, polled by the Scan page."""
-    return {"scanners": [{"name": s["name"], "feeder": feeder_state(s["escl"])}
-                         for s in list_scanners() if s["escl"]]}
+    return render_template("scan.html")
 
 
 @app.post("/print")

@@ -59,14 +59,22 @@ function adfLoaded(baseUrl) {
 function applySource(device) {
   const mode = (process.env.SCAN_DEFAULT_SOURCE || 'auto').toLowerCase();
   const feature = device.features['--source'];
-  if (!feature || mode === 'remember' || !Array.isArray(feature.options)) return;
+  if (!feature || !Array.isArray(feature.options)) return;
   const pick = kind => feature.options.find(SOURCE_MATCH[kind]);
+
+  // Feeder state for this device, shown under the Device field by hub-feeder.js.
+  let loaded = null;
+  if (pick('adf') || pick('duplex')) {
+    const name = device.id.split(':').slice(2).join(':');
+    const url = esclUrls[name] || esclUrls[name.replace(/_/g, ' ')];
+    loaded = url ? adfLoaded(url) : null;
+  }
+  feature.hubFeeder = loaded === true ? 'loaded' : loaded === false ? 'empty' : null;
+  feature.hubSourceMode = mode;
+  if (mode === 'remember') return;
 
   let choice;
   if (mode.startsWith('auto')) {
-    const name = device.id.split(':').slice(2).join(':');
-    const url = esclUrls[name] || esclUrls[name.replace(/_/g, ' ')];
-    const loaded = url ? adfLoaded(url) : null;
     if (loaded === true) choice = pick(mode === 'auto-duplex' ? 'duplex' : 'adf') || pick('adf');
     else if (loaded === false) choice = pick('flatbed');
     // unknown (no eSCL URL / offline): leave scanservjs' default alone

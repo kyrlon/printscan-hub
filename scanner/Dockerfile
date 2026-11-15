@@ -19,10 +19,11 @@ RUN sed -i 's/\("btn-scan":[^,]*(\["\)Scan"\]/\1Scan now"]/g' /usr/lib/scanservj
 RUN sed -i 's/this\.params\.source=\([A-Za-z_$]*\)\.params\.source||\([A-Za-z_$]*\)\.features\["--source"\]\.default/this.params.source=(\2.features["--source"].hubForceDefault?null:\1.params.source)||\2.features["--source"].default/' /usr/lib/scanservjs/client/assets/index-*.js \
     && grep -q 'hubForceDefault' /usr/lib/scanservjs/client/assets/index-*.js
 
-# Hover descriptions for the scan settings and buttons.
-COPY scanner/hub-tooltips.js /usr/lib/scanservjs/client/hub-tooltips.js
-RUN sed -i 's#</body>#<script src="hub-tooltips.js"></script></body>#' /usr/lib/scanservjs/client/index.html \
-    && grep -q 'hub-tooltips.js' /usr/lib/scanservjs/client/index.html
+# Hover descriptions for the scan settings, and the feeder status shown under
+# the Device field.
+COPY scanner/hub-tooltips.js scanner/hub-feeder.js /usr/lib/scanservjs/client/
+RUN sed -i 's#</body>#<script src="hub-tooltips.js"></script><script src="hub-feeder.js"></script></body>#' /usr/lib/scanservjs/client/index.html \
+    && grep -q 'hub-feeder.js' /usr/lib/scanservjs/client/index.html
 
 # Same browser-tab icon as the hub portal (replaces scanservjs' own icon).
 COPY hub/portal/static/icon.svg /usr/lib/scanservjs/client/hub-icon.svg
