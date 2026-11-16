@@ -91,6 +91,22 @@
     .tile-icon svg { width:54px; height:54px; }
     .tile-title { font-size:30px; font-weight:700; letter-spacing:-.01em; }
     .tile-sub { color:var(--muted); font-size:15px; max-width:30ch; }
+    /* Phones: compact header and tabs; tables become one stacked block per row. */
+    td code { overflow-wrap:anywhere; }
+    @media (max-width:600px) {
+      header .wrap { gap:6px 14px; }
+      header .brand { font-size:16px; }
+      main.wrap { padding-top:16px; }
+      .card { padding:16px; }
+      .table-scroll table, .table-scroll tbody, .table-scroll tr, .table-scroll td { display:block; width:100%; }
+      .table-scroll tr:has(> th) { display:none; }
+      .table-scroll tr { padding:8px 0; border-bottom:1px solid var(--line); }
+      .table-scroll td { border:0; padding:3px 0; text-align:left !important; }
+      .table-scroll td:empty { display:none; }
+      .table-scroll td .actions { justify-content:flex-start !important; }
+      .table-scroll th[colspan] { display:block; padding:12px 0 4px; }
+      .table-scroll tr:has(> th[colspan]) { display:block; }
+    }
     @media (max-width:600px) { .tile { min-height:180px; padding:24px 16px; } .tile-icon { width:72px; height:72px; } .tile-icon svg { width:40px; height:40px; } }
     .size-hint { margin-top:4px; min-height:1.2em; }
     .size-hint.too-big { color:var(--err); font-weight:600; }
@@ -120,6 +136,10 @@
     .tabs a:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
     .tabs .pill { font-weight:500; }
     .tab-panel[hidden] { display:none; }
+    @media (max-width:600px) {
+      .tabs { flex-wrap:nowrap; gap:0; }
+      .tabs a { flex:1; justify-content:center; padding:8px 4px; gap:5px; font-size:14px; }
+    }
     /* Collapsible panel: bordered box, full-width clickable header, turning arrow. */
     details.fold { border:1px solid var(--line); border-radius:8px; background:var(--card); }
     details.fold > summary { list-style:none; display:flex; align-items:center; gap:10px;
