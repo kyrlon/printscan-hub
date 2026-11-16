@@ -328,14 +328,20 @@ def printer_status(c, name, uri):
             attrs = {}
 
     alerts = parse_alerts(attrs.get("printer-state-reasons"))
-    # "Out of paper" may only mean one tray is empty: say which, and don't alarm.
-    paper = next((a for a in alerts if a["text"] in ("Out of paper", "Load paper")), None)
-    if paper and uri.startswith(("ipp://", "ipps://")) and reachable is not False:
+    # Per-tray paper state, shown quietly next to the ink levels. Printers raise
+    # "out of paper" when *any* tray is empty (often just the photo tray); only
+    # keep the alert when the main tray, or every tray, is empty.
+    trays = []
+    if uri.startswith(("ipp://", "ipps://")) and reachable is not False:
         trays = input_trays(uri)
-        empty = [t["label"] for t in trays if t["problem"]]
-        if empty and len(empty) < len(trays):
-            paper["text"] = " and ".join(dict.fromkeys(empty)) + " empty"
-            paper["sev"] = "info"
+    paper = next((a for a in alerts if a["text"] in ("Out of paper", "Load paper")), None)
+    if paper and trays:
+        main = next((t for t in trays if t["label"] == "Main tray"),
+                    next((t for t in trays if t["label"] != "Photo tray"), None))
+        if main and not main["problem"]:
+            alerts.remove(paper)
+        elif main and any(not t["problem"] for t in trays):
+            paper["text"] = f"{main['label']} empty"
     if reachable is False:
         alerts.insert(0, {"text": f"Not responding at {host}", "sev": "error"})
 
@@ -354,7 +360,7 @@ def printer_status(c, name, uri):
     # "everywhere" driver may only say "Printer - IPP Everywhere".
     device_model = attrs.get("printer-make-and-model") if live else None
     status = {"supplies": parse_supplies(attrs), "alerts": alerts, "web": web, "live": live,
-              "device_model": device_model}
+              "device_model": device_model, "trays": trays}
     _status_cache[(name, uri)] = (time.time(), status)
     return status
 

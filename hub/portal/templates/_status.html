@@ -15,6 +15,11 @@
     {% endfor %}
   </div>
   {% else %}<span class="muted small">Not reported</span>{% endif %}
+  {% if p.trays %}
+  <div class="muted small" style="margin-top:6px" title="Paper as reported by each tray. An empty photo tray doesn't stop normal printing.">
+    Paper: {% for t in p.trays %}{{ t.label }} {{ 'empty' if t.problem else 'loaded' }}{% if not loop.last %} · {% endif %}{% endfor %}
+  </div>
+  {% endif %}
 {%- endmacro %}
 
 {% macro device_link(url, label="Device settings") -%}
