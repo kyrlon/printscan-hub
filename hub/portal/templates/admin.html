@@ -101,7 +101,7 @@
     {% endfor %}
   </table></div>
   {% endif %}
-  <form method="post" action="{{ url_for('admin_scanners_refresh') }}" class="actions" style="margin-top:12px;align-items:center">
+  <form method="post" action="{{ url_for('admin_scanners_refresh') }}" class="actions" style="margin-top:12px;align-items:center" data-busy="Searching…">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
     <button class="secondary" title="Same as the ↻ button on the Scan page">Search again</button>
     <span class="muted small">Takes up to a minute.{% if scanners_updated %} Last change: {{ scanners_updated[:16]|replace('T', ' ') }} UTC.{% endif %}</span>
@@ -112,14 +112,14 @@
   <h2>Add a printer</h2>
 
   <label>1. Find the printer</label>
-  <form method="get" action="{{ url_for('admin') }}" class="actions">
+  <form method="get" action="{{ url_for('admin') }}" class="actions" data-busy="Searching…">
     <input type="hidden" name="discover" value="1">
     {% if prefill_model %}<input type="hidden" name="model" value="{{ prefill_model }}">{% endif %}
     <button class="secondary" type="submit">Scan network &amp; USB for printers</button>
     <span class="muted small" style="align-self:center">takes about 10 seconds</span>
   </form>
   {% if env.vm %}<p class="small muted" style="margin:6px 0 0">On {{ env.vm }} the network scan can't see your LAN, so look the printer up by IP address below.</p>{% endif %}
-  <form method="get" action="{{ url_for('admin') }}" class="actions" style="margin-top:10px">
+  <form method="get" action="{{ url_for('admin') }}" class="actions" style="margin-top:10px" data-busy="Looking up…">
     {% if prefill_model %}<input type="hidden" name="model" value="{{ prefill_model }}">{% endif %}
     <input type="text" name="probe" value="{{ probe }}" placeholder="…or the printer's IP address / hostname, e.g. 192.168.1.50" style="flex:1;min-width:220px">
     <button class="secondary" type="submit">Look up</button>

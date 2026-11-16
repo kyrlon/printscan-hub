@@ -95,6 +95,12 @@
     .size-hint { margin-top:4px; min-height:1.2em; }
     .size-hint.too-big { color:var(--err); font-weight:600; }
     button:disabled { opacity:.45; cursor:not-allowed; }
+    button.busy { opacity:.8; cursor:progress; }
+    .spin { display:inline-block; width:.9em; height:.9em; margin-right:6px; vertical-align:-.1em;
+            border:2px solid currentColor; border-right-color:transparent; border-radius:50%;
+            animation:spin .7s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spin { animation-duration:2s; } }
     .warn-list { margin:8px 0 4px; padding-left:20px; }
     .warn-list li { margin:3px 0; }
     code, pre { font-family:ui-monospace,Consolas,monospace; font-size:13px; }
@@ -138,6 +144,33 @@ document.querySelectorAll('input[type=file][data-max-mb]').forEach(function (inp
         : fmt(total) + ' of ' + input.dataset.maxMb + ' MB allowed';
     }
   });
+});
+
+// Forms marked data-busy="Searching…" show a spinner and a seconds counter on
+// their button while the page waits, so slow requests don't look stuck.
+document.querySelectorAll('form[data-busy]').forEach(function (form) {
+  form.addEventListener('submit', function (e) {
+    if (e.defaultPrevented) return;            // e.g. a cancelled confirm()
+    var btn = e.submitter || form.querySelector('button[type=submit], button:not([type])');
+    if (!btn) return;
+    var label = form.dataset.busy, t0 = Date.now();
+    // Disable after the submit has been dispatched so the button's value is still sent.
+    setTimeout(function () {
+      btn.disabled = true;
+      btn.classList.add('busy');
+      btn.setAttribute('aria-busy', 'true');
+      var tick = function () {
+        var s = Math.floor((Date.now() - t0) / 1000);
+        btn.innerHTML = '<span class="spin" aria-hidden="true"></span>' + label + (s ? ' ' + s + 's' : '');
+      };
+      tick();
+      setInterval(tick, 1000);
+    }, 0);
+  });
+});
+// Coming back with the browser's Back button restores the page from cache: reset.
+window.addEventListener('pageshow', function (e) {
+  if (e.persisted && document.querySelector('button.busy')) location.reload();
 });
 </script>
 </body>
