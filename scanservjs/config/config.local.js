@@ -131,6 +131,25 @@ function applySource(device) {
   }
 }
 
+// The Scan page's device list shows device.name, which scanservjs sets to the
+// raw SANE id ("airscan:e1:Brother ..."). Scanning uses device.id, so name is
+// free to be a readable label: drop the backend/index prefix and HP's [MAC] tag,
+// and say "(network)" only when the same model is also listed another way.
+function friendlyNames(devices) {
+  const label = d => {
+    const m = d.id.match(/^airscan:[ew]\d+:(.+)$/i);
+    if (!m) return d.id;                              // other backends: keep as is
+    return m[1].replace(/\s*\[[0-9A-F]{6}\]/i, '').trim();
+  };
+  const base = n => n.replace(/\s*\(usb\)$/i, '').toLowerCase();
+  const names = devices.map(label);
+  devices.forEach((d, i) => {
+    const dup = names.some((n, j) => j !== i && base(n) === base(names[i]));
+    d.name = dup && !/\(usb\)$/i.test(names[i]) && names[i] !== d.id
+      ? `${names[i]} (network)` : names[i];
+  });
+}
+
 module.exports = {
   afterConfig(config) {
     // Internal port; people reach the scan page through the portal (/scan/app/),
@@ -173,5 +192,6 @@ module.exports = {
     if (visible.length && visible.length < devices.length) {
       devices.splice(0, devices.length, ...visible);
     }
+    friendlyNames(devices);
   }
 };

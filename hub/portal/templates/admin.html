@@ -84,7 +84,8 @@
           {% if s.twin_by and not s.twin_resolved %}<br><span class="alert warn" title="{{ 'Both report the same device ID.' if s.twin_by in ('uuid','serial') else 'Same name apart from the connection, so very likely the same device.' }}">
             Same {{ 'device' if s.twin_by in ('uuid','serial') else 'device (by name)' }} as: {{ s.twins|join(', ') }}. Hide one.</span>
           {% elif s.twin_by %}<br><span class="muted small">Same device as: {{ s.twins|join(', ') }}{% if not s.hidden %} (hidden){% endif %}</span>{% endif %}
-          <br><code class="muted small">{{ s.id }}</code></td>
+          <br><span class="muted small" style="cursor:help;border-bottom:1px dotted"
+                title="Internal scanner ID: {{ s.id }}&#10;driver : protocol + discovery order : name. The number can change after a restart.">ID</span></td>
       <td class="small">{{ s.connection }}{% if s.url %}<br><span class="muted">{{ s.url }}</span>{% endif %}</td>
       <td class="small">{{ s.sources|join(', ') or '—' }}{% if s.res_range %}<br><span class="muted">{{ s.res_range }}</span>{% endif %}
           {% if s.feeder %}<br><span class="alert {{ 'info' if s.feeder == 'empty' else 'warn' }}">feeder {{ s.feeder }}</span>{% endif %}</td>
