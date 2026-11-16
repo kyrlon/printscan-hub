@@ -101,7 +101,7 @@
               {% if d.same_as %}<span class="pill" title="Same serial number as the printer behind this queue, reached another way (e.g. Wi-Fi instead of USB). Adding it gives a second queue for the same printer.">same printer as {{ d.same_as }}</span><br>{% endif %}
               <a class="btn secondary" style="padding:3px 10px;font-size:13px;{% if d.same_as %}margin-top:4px{% endif %}"
                  href="{{ url_for('admin', uri=d.uri, model=d.suggest or prefill_model, info=d.info) }}#add-form"
-                 title="Fill in step 3 below with this printer; then press Add printer there">Add</a>
+                 title="Fill in step 2 below with this printer; then press Add printer there">Add</a>
             {% endif %}</td></tr>
       {% endfor %}
     </table></div>
@@ -119,34 +119,16 @@
     {% endif %}
   {% endif %}
 
-  <label id="pick-driver" style="scroll-margin-top:12px">2. Pick a driver <span class="muted" style="font-weight:400">(usually skip this: <code>everywhere</code> works for modern printers; needed for <code>socket://</code>, <code>lpd://</code> and some USB addresses)</span></label>
-  <form method="get" action="{{ url_for('admin') }}#pick-driver" class="actions" data-busy="Searching…">
-    {% if prefill_uri %}<input type="hidden" name="uri" value="{{ prefill_uri }}">{% endif %}
-    {% if prefill_info %}<input type="hidden" name="info" value="{{ prefill_info }}">{% endif %}
-    <input type="text" name="q" value="{{ q }}" placeholder="Search installed drivers, e.g. brother hl-l2350" style="flex:1;min-width:220px">
-    <button class="secondary" type="submit">Search drivers</button>
-  </form>
-  {% if ppds is not none %}
-    {% if ppds %}
-    <div class="table-scroll" style="margin-top:10px;max-height:300px;overflow-y:auto"><table>
-      {% for d in ppds %}
-      <tr><td class="small">{{ d.model }}<br><code class="muted">{{ d.name }}</code></td>
-          <td><a class="btn secondary" style="padding:3px 10px;font-size:13px"
-                 href="{{ url_for('admin', uri=prefill_uri, model=d.name, q=q, info=prefill_info) }}#add-form">Use</a></td></tr>
-      {% endfor %}
-    </table></div>
-    {% else %}<p class="muted">No installed driver matches “{{ q }}”. Install one in the <strong>Drivers</strong> section below, then search again.</p>{% endif %}
-  {% endif %}
-
-  <label id="add-form">3. Name it and press <em>Add printer</em></label>
+  {% set needs_driver = prefill_uri and not prefill_driverless and (not prefill_model or prefill_model == 'everywhere') %}
+  <label id="add-form">2. Name it and press <em>Add printer</em></label>
   {% if prefill_uri %}
-  <div class="flash {{ 'ok' if prefill_driverless or (prefill_model and prefill_model != 'everywhere') else 'warn' }}" style="margin:6px 0 10px">
+  <div class="flash {{ 'warn' if needs_driver else 'ok' }}" style="margin:6px 0 10px">
     Picked {% if prefill_info %}<strong>{{ prefill_info }}</strong>{% else %}<code>{{ prefill_uri }}</code>{% endif %}.
-    {% if prefill_driverless or (prefill_model and prefill_model != 'everywhere') %}
-      Check the names below, then press <strong>Add printer</strong>. Nothing is set up until you do.
+    {% if needs_driver %}
+      This connection needs a driver for your model: search for it under <em>Use a specific driver</em> below and press <em>Use</em>,
+      or pick a <em>(driverless)</em> / <code>ipp</code> entry in step 1 instead.
     {% else %}
-      This connection needs a driver for your model: find it in step 2 and press <em>Use</em>, or pick a
-      <em>(driverless)</em> / <code>ipp</code> entry in step 1 instead.
+      Check the names below, then press <strong>Add printer</strong>. Nothing is set up until you do.
     {% endif %}
   </div>
   {% endif %}
@@ -165,8 +147,38 @@
            placeholder="ipp://192.168.1.50/ipp/print   socket://192.168.1.50:9100   usb://Brother/...">
     <label for="model">Driver</label>
     <input id="model" type="text" name="model" value="{{ prefill_model or 'everywhere' }}">
+    <p class="small muted" style="margin:4px 0 0"><code>everywhere</code> is the built-in driverless driver: nothing to install. It works with
+      <code>ipp://</code>, <code>ipps://</code> and <code>dnssd://…_ipp…</code> addresses, which covers most printers from the last ~10 years.</p>
+
+    <details class="fold" id="pick-driver" style="margin-top:12px;scroll-margin-top:12px" {% if ppds is not none or needs_driver %}open{% endif %}>
+      <summary><span>Use a specific driver
+        <span class="hint">Only for <code>socket://</code>, <code>lpd://</code> or older USB printers, or if <code>everywhere</code> prints wrongly.</span></span></summary>
+      <div>
+        {# These belong to the separate driver-search form below (forms can't nest). #}
+        <div class="actions">
+          <input form="driver-search" type="text" name="q" value="{{ q }}" placeholder="Search installed drivers, e.g. brother hl-l2350" style="flex:1;min-width:220px">
+          <button form="driver-search" class="secondary" type="submit">Search drivers</button>
+        </div>
+        {% if ppds is not none %}
+          {% if ppds %}
+          <div class="table-scroll" style="margin-top:10px;max-height:300px;overflow-y:auto"><table>
+            {% for d in ppds %}
+            <tr><td class="small">{{ d.model }}<br><code class="muted">{{ d.name }}</code></td>
+                <td><a class="btn secondary" style="padding:3px 10px;font-size:13px"
+                       href="{{ url_for('admin', uri=prefill_uri, model=d.name, q=q, info=prefill_info) }}#add-form">Use</a></td></tr>
+            {% endfor %}
+          </table></div>
+          {% else %}<p class="muted">No installed driver matches “{{ q }}”. Install one in the <strong>Drivers</strong> section below, then search again.</p>{% endif %}
+        {% endif %}
+      </div>
+    </details>
+
     <div class="checks"><label><input type="checkbox" name="default" value="1"> Make this the default printer</label></div>
     <button type="submit" style="margin-top:14px">Add printer</button>
+  </form>
+  <form id="driver-search" method="get" action="{{ url_for('admin') }}#pick-driver" data-busy="Searching…">
+    {% if prefill_uri %}<input type="hidden" name="uri" value="{{ prefill_uri }}">{% endif %}
+    {% if prefill_info %}<input type="hidden" name="info" value="{{ prefill_info }}">{% endif %}
   </form>
 </div>
 
