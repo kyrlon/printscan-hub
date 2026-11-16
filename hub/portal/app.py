@@ -457,6 +457,18 @@ def detected_scanners():
     return out, data.get("updated", "")
 
 
+def driverless_uri(uri):
+    """True if the generic IPP Everywhere driver can talk to this address."""
+    u = (uri or "").lower()
+    return u.startswith(("ipp://", "ipps://")) or (u.startswith("dnssd://") and "._ipp" in u)
+
+
+def queue_name_from(info):
+    """'HP ENVY Photo 7100 series [1ACE54]' -> 'HP_ENVY_Photo_7100_series'."""
+    base = re.sub(r"\s*(\[[0-9A-Fa-f]{6}\]|\((usb|driverless)\))", "", info or "")
+    return re.sub(r"[^A-Za-z0-9_\-]+", "_", base).strip("_")[:60]
+
+
 def serial_lookup(scanners):
     """Map UUID / IP / network name -> serial, learned from the scanners' eSCL replies.
 
@@ -952,6 +964,8 @@ def admin():
         for d in devices:
             d["added_as"] = queue_for_device(d, printers)
             d["serial"] = device_serial(d["uri"], d.get("device_id"), serials)
+            if "suggest" not in d:
+                d["suggest"] = "everywhere" if driverless_uri(d["uri"]) else ""
         if request.args.get("discover") and not request.args.get("all"):
             hidden_added = sum(1 for d in devices if d["added_as"])
             # Serial ports and the braille driver aren't printers people want here.
@@ -978,6 +992,9 @@ def admin():
         scanners=scanners, scanners_updated=scanners_updated,
         hidden_added=hidden_added, show_all=bool(request.args.get("all")),
         prefill_uri=request.args.get("uri", ""), prefill_model=request.args.get("model", ""),
+        prefill_info=request.args.get("info", ""),
+        prefill_name=queue_name_from(request.args.get("info", "")),
+        prefill_driverless=driverless_uri(request.args.get("uri", "")),
         log_tail=log_tail, weak_password=ADMIN_PASSWORD in ("changeme", "admin", "password"),
         apt_list=(DRIVERS_DIR / "apt-packages.txt").read_text() if (DRIVERS_DIR / "apt-packages.txt").exists() else "",
     )

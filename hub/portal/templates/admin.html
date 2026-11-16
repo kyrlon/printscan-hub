@@ -111,7 +111,7 @@
 <div class="card">
   <h2>Add a printer</h2>
 
-  <label>1. Find the printer</label>
+  <label>1. Find the printer, then press <em>Add</em> next to it</label>
   <form method="get" action="{{ url_for('admin') }}" class="actions" data-busy="Searching…">
     <input type="hidden" name="discover" value="1">
     {% if prefill_model %}<input type="hidden" name="model" value="{{ prefill_model }}">{% endif %}
@@ -135,8 +135,8 @@
           <td class="small"><code>{{ d.uri }}</code></td>
           <td>{% if d.added_as %}<span class="pill" title="This device already has a print queue">added as {{ d.added_as }}</span>
               {% else %}<a class="btn secondary" style="padding:3px 10px;font-size:13px"
-                 href="{{ url_for('admin', uri=d.uri, model=d.suggest or prefill_model) }}#add-form"
-                 title="Fill in the form below with this device">Add</a>{% endif %}</td></tr>
+                 href="{{ url_for('admin', uri=d.uri, model=d.suggest or prefill_model, info=d.info) }}#add-form"
+                 title="Fill in step 3 below with this printer; then press Add printer there">Add</a>{% endif %}</td></tr>
       {% endfor %}
     </table></div>
     {% elif not probe %}<p class="muted">{% if hidden_added %}No new printers found: every printer found is already added.{% else %}Nothing found. Look the printer up by IP address above.{% endif %}</p>{% endif %}
@@ -148,9 +148,10 @@
     {% endif %}
   {% endif %}
 
-  <label>2. Pick a driver <span class="muted" style="font-weight:400">(optional — leave as <code>everywhere</code> for modern network printers)</span></label>
+  <label>2. Pick a driver <span class="muted" style="font-weight:400">(usually skip this: <code>everywhere</code> works for modern printers; needed for <code>socket://</code>, <code>lpd://</code> and some USB addresses)</span></label>
   <form method="get" action="{{ url_for('admin') }}" class="actions">
     {% if prefill_uri %}<input type="hidden" name="uri" value="{{ prefill_uri }}">{% endif %}
+    {% if prefill_info %}<input type="hidden" name="info" value="{{ prefill_info }}">{% endif %}
     <input type="text" name="q" value="{{ q }}" placeholder="Search installed drivers, e.g. brother hl-l2350" style="flex:1;min-width:220px">
     <button class="secondary" type="submit">Search drivers</button>
   </form>
@@ -160,20 +161,31 @@
       {% for d in ppds %}
       <tr><td class="small">{{ d.model }}<br><code class="muted">{{ d.name }}</code></td>
           <td><a class="btn secondary" style="padding:3px 10px;font-size:13px"
-                 href="{{ url_for('admin', uri=prefill_uri, model=d.name, q=q) }}">Use</a></td></tr>
+                 href="{{ url_for('admin', uri=prefill_uri, model=d.name, q=q, info=prefill_info) }}#add-form">Use</a></td></tr>
       {% endfor %}
     </table></div>
     {% else %}<p class="muted">No installed driver matches “{{ q }}”. Install one in the <strong>Drivers</strong> section below, then search again.</p>{% endif %}
   {% endif %}
 
-  <label id="add-form">3. Create the queue</label>
+  <label id="add-form">3. Name it and press <em>Add printer</em></label>
+  {% if prefill_uri %}
+  <div class="flash {{ 'ok' if prefill_driverless or (prefill_model and prefill_model != 'everywhere') else 'warn' }}" style="margin:6px 0 10px">
+    Picked {% if prefill_info %}<strong>{{ prefill_info }}</strong>{% else %}<code>{{ prefill_uri }}</code>{% endif %}.
+    {% if prefill_driverless or (prefill_model and prefill_model != 'everywhere') %}
+      Check the names below, then press <strong>Add printer</strong>. Nothing is set up until you do.
+    {% else %}
+      This connection needs a driver for your model: find it in step 2 and press <em>Use</em>, or pick a
+      <em>(driverless)</em> / <code>ipp</code> entry in step 1 instead.
+    {% endif %}
+  </div>
+  {% endif %}
   <form method="post" action="{{ url_for('admin_add_printer') }}">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
     <div class="row">
-      <div><label for="name">Queue name</label>
-        <input id="name" type="text" name="name" required pattern="[A-Za-z0-9_\-]+" placeholder="Office_Laser"></div>
+      <div><label for="name">Queue name <span class="muted" style="font-weight:400">(letters, numbers, _ or -)</span></label>
+        <input id="name" type="text" name="name" required pattern="[A-Za-z0-9_\-]+" placeholder="Office_Laser" value="{{ prefill_name }}"></div>
       <div><label for="desc">Display name</label>
-        <input id="desc" type="text" name="desc" placeholder="Office laser printer"></div>
+        <input id="desc" type="text" name="desc" placeholder="Office laser printer" value="{{ prefill_info }}"></div>
       <div><label for="location">Location</label>
         <input id="location" type="text" name="location" placeholder="Upstairs"></div>
     </div>
