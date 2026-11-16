@@ -736,8 +736,44 @@ def suggest_drivers(info, limit=12):
         score = sum(w in text for w in words)
         if score >= max(2, len(words) // 2):
             hits.append((-score, a.get("ppd-make-and-model", name), name))
-    hits.sort()
-    return [{"name": n, "model": m} for _, m, n in hits[:limit]]
+    hits.sort(key=lambda h: (h[0], h[1], _ppd_source_rank(h[2])))
+    return dedupe_drivers([{"name": n, "model": m} for _, m, n in hits])[:limit]
+
+
+def _ppd_source_rank(name):
+    """Prefer CUPS's compiled drivers, then plain PPD files, then HPLIP's alias entries."""
+    for i, prefix in enumerate(("drv:///", "lsb/", "foomatic", "hplip:", "hplip-data:")):
+        if name.startswith(prefix):
+            return i
+    return 2
+
+
+def dedupe_drivers(drivers):
+    """One entry per driver: the same PPD is often listed once per product alias."""
+    best = {}
+    for d in drivers:
+        cur = best.get(d["model"])
+        if cur is None or _ppd_source_rank(d["name"]) < _ppd_source_rank(cur["name"]):
+            best[d["model"]] = d
+    seen, out = set(), []
+    for d in drivers:                       # keep the original order
+        if d["model"] not in seen:
+            seen.add(d["model"])
+            out.append(best[d["model"]])
+    return out
+
+
+# Reading every installed driver takes a few seconds; do it once in the background
+# so the first Add-a-printer page doesn't wait for it.
+def _warm_ppds():
+    time.sleep(5)
+    try:
+        get_ppds()
+    except (cups.IPPError, RuntimeError):
+        pass                                # loaded on first use instead
+
+
+threading.Thread(target=_warm_ppds, daemon=True).start()
 
 
 # ----------------------------------------------------------------- public ---
@@ -1012,8 +1048,8 @@ def admin():
         ppds = [{"name": n, "model": a.get("ppd-make-and-model", n)}
                 for n, a in get_ppds().items()
                 if all(t in (a.get("ppd-make-and-model", "") + " " + n).lower() for t in terms)]
-        ppds.sort(key=lambda p: p["model"])
-        ppds = ppds[:300]
+        ppds.sort(key=lambda p: (p["model"], _ppd_source_rank(p["name"])))
+        ppds = dedupe_drivers(ppds)[:300]
 
     log_tail = ""
     log = DRIVERS_DIR / "install.log"
