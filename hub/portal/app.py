@@ -728,11 +728,11 @@ def suggest_drivers(info, limit=12):
         return []
     hits = []
     for name, a in ppds.items():
-        if name in ("everywhere", "raw") or name.startswith("driverless:"):
-            continue
+        if name in ("everywhere", "raw") or name.startswith("driverless"):
+            continue                       # driverless/fax entries only work through IPP
         text = (a.get("ppd-make-and-model", "") + " " + name).lower()
-        if numbers and not all(n in text for n in numbers):
-            continue                       # the model number has to match
+        if numbers and not all(re.search(rf"(?<![a-z0-9]){re.escape(n)}(?![a-z0-9])", text) for n in numbers):
+            continue                       # the model number has to match as a whole word
         score = sum(w in text for w in words)
         if score >= max(2, len(words) // 2):
             hits.append((-score, a.get("ppd-make-and-model", name), name))
