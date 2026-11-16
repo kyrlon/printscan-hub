@@ -1,6 +1,6 @@
 ﻿# PrintScan Hub
 #   http://<server>/        home, upload & print, scanning (/scan), admin
-#   ipp://<server>:631/printers/<queue>   add as a driverless network printer
+#   ipp://<server>:631/printers/<queue>   add as a driverless network printer (port: CUPS_PORT)
 # The scan app (scanservjs) only listens inside the host; the portal serves it
 # at /scan/app/ so it can keep private scans private.
 #

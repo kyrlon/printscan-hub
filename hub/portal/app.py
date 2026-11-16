@@ -31,6 +31,7 @@ import store
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 HUB_NAME = os.environ.get("HUB_NAME", "PrintScan Hub")
+CUPS_PORT = os.environ.get("CUPS_PORT", "631").strip() or "631"   # where laptops print to
 def _env_mb(name, default):
     """Read a size in MB from .env; a typo falls back to the default instead of crashing."""
     raw = os.environ.get(name, "").strip().lower().removesuffix("mb").strip()
@@ -157,8 +158,8 @@ def inject_globals():
         "scan_url": url_for("scanproxy.scan_app"),
         "signed_in_user": session.get("user"),
         "accounts_on": ALLOW_SIGNUP or store.user_count() > 0,
-        "cups_url": f"http://{host}:631",
-        "ipp_base": f"http://{host}:631/printers/",
+        "cups_url": f"http://{host}:{CUPS_PORT}",
+        "ipp_base": f"http://{host}:{CUPS_PORT}/printers/",
         "env": ENVIRONMENT,
         "inbox": INBOX,
         "max_mb": MAX_UPLOAD_MB,

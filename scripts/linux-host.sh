@@ -11,7 +11,14 @@
 set -euo pipefail
 
 HOST_CUPS_UNITS=(cups-browsed.service cups.service cups.socket cups.path)
-PORTS="80 631 21 445 8080"
+
+# Ports from the hub's .env (next to this script's folder), with the defaults.
+ENV_FILE="$(cd "$(dirname "$0")/.." && pwd)/.env"
+env_val() { [ -f "$ENV_FILE" ] && sed -n "s/^$1=\([0-9]*\).*/\1/p" "$ENV_FILE" | tail -1; }
+PORTAL_PORT=$(env_val PORTAL_PORT); PORTAL_PORT=${PORTAL_PORT:-80}
+CUPS_PORT=$(env_val CUPS_PORT);     CUPS_PORT=${CUPS_PORT:-631}
+SCAN_PORT=$(env_val SCAN_PORT);     SCAN_PORT=${SCAN_PORT:-8080}
+PORTS="$PORTAL_PORT $CUPS_PORT 21 445 $SCAN_PORT"
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[!]\033[0m %s\n' "$*"; }
@@ -38,10 +45,16 @@ status() {
   for u in cups cups-browsed avahi-daemon ipp-usb docker; do
     printf '   %-14s %s\n' "$u" "$(unit_state "$u")"
   done
-  [ "$(unit_state cups)" = active ] && warn "The host's CUPS is running: it holds port 631, so the hub's CUPS can't start. Run: $0 prepare"
+  if [ "$(unit_state cups)" = active ]; then
+    if [ "$CUPS_PORT" = 631 ]; then
+      warn "The host's CUPS is running: it holds port 631, so the hub's CUPS can't start. Run: $0 prepare (or set CUPS_PORT in .env)"
+    else
+      ok "The host's CUPS is running on 631; the hub uses CUPS_PORT=$CUPS_PORT, so both can run."
+    fi
+  fi
   [ "$(unit_state avahi-daemon)" = active ] || warn "avahi-daemon isn't running: printers won't be auto-discovered."
 
-  say "Ports the hub uses (80 portal, 631 printing, 21 scan inbox, 445 SMB inbox, 8080 internal scan app)"
+  say "Ports the hub uses ($PORTAL_PORT portal, $CUPS_PORT printing, 21 scan inbox, 445 SMB inbox, $SCAN_PORT internal scan app)"
   for p in $PORTS; do
     holder=$(ss -ltnpH "sport = :$p" 2>/dev/null | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | sort -u | tr '\n' ' ')
     if ss -ltnH "sport = :$p" 2>/dev/null | grep -q .; then
@@ -96,8 +109,10 @@ prepare() {
 restore() {
   as_root restore
   if command -v docker >/dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx printscan-hub; then
-    warn "printscan-hub is running and uses port 631. Stop it first: docker compose down"
-    exit 1
+    if [ "$CUPS_PORT" = 631 ]; then
+      warn "printscan-hub is running and uses port 631. Stop it first (docker compose down), or set CUPS_PORT in .env."
+      exit 1
+    fi
   fi
   say "Re-enabling the host's CUPS"
   for u in cups.socket cups.path cups.service cups-browsed.service; do

@@ -4,6 +4,7 @@ set -uo pipefail
 ADMIN_USER="${ADMIN_USER:-admin}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 PORTAL_PORT="${PORTAL_PORT:-80}"
+CUPS_PORT="${CUPS_PORT:-631}"
 AVAHI="${AVAHI:-auto}"   # auto | internal | host | off
 
 say() { echo "[hub] $*"; }
@@ -11,6 +12,19 @@ say() { echo "[hub] $*"; }
 # --- 1. Seed persistent CUPS config (never overwrites your edits) ----------
 cp -an /opt/cups-defaults/. /etc/cups/
 mkdir -p /etc/cups/ppd /run/cups /var/spool/cups /var/cache/cups /var/log/cups
+
+# CUPS_PORT (.env) wins over the saved cupsd.conf, so changing it only needs a restart.
+if ! [[ "$CUPS_PORT" =~ ^[0-9]+$ ]] || [ "$CUPS_PORT" -lt 1 ] || [ "$CUPS_PORT" -gt 65535 ]; then
+  say "ERROR: CUPS_PORT=$CUPS_PORT is not a valid port number."
+  exit 1
+fi
+if grep -qE '^\s*Port\s+[0-9]+' /etc/cups/cupsd.conf; then
+  sed -i -E "s/^(\s*)Port\s+[0-9]+/\1Port $CUPS_PORT/" /etc/cups/cupsd.conf
+elif grep -qE '^\s*Listen\s+[^/]' /etc/cups/cupsd.conf; then
+  say "WARNING: data/cups/cupsd.conf uses 'Listen' lines instead of 'Port'; CUPS_PORT is ignored."
+else
+  echo "Port $CUPS_PORT" >> /etc/cups/cupsd.conf
+fi
 
 # --- 2. Admin account (used by CUPS web admin AND the portal admin page) ----
 if [ -z "$ADMIN_PASSWORD" ]; then
@@ -78,7 +92,7 @@ cups_watchdog() {
 }
 cups_watchdog &
 for _ in $(seq 1 30); do lpstat -r 2>/dev/null | grep -q "is running" && break; sleep 1; done
-say "CUPS is up on port 631"
+say "CUPS is up on port $CUPS_PORT"
 
 # --- 6. Web portal (foreground) ---------------------------------------------
 say "Portal listening on port $PORTAL_PORT"

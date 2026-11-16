@@ -13,6 +13,8 @@ computers don't have to install anything.
 | **Admin**: add printers, install drivers | `http://<server>/admin` | `ADMIN_USER` / `ADMIN_PASSWORD` |
 | Full CUPS admin | `http://<server>:631/admin` | same login |
 
+631 is the default; set `CUPS_PORT` in `.env` if that port is taken (see [Linux host prep](#linux-host-prep-why-stop-the-hosts-cups)).
+
 A locked-down work laptop can always use the upload page: it's just a website.
 
 New to printer and scanner jargon (ADF, IPP, eSCL, PPD…)? See [Help: terms explained](#help-terms-explained).
@@ -80,7 +82,7 @@ docker compose up -d --build
 
 ### Linux host prep: why stop the host's CUPS?
 
-On Linux the hub uses **host networking**, so its CUPS needs port **631** on the machine itself.
+On Linux the hub uses **host networking**, so its CUPS needs port **631** (or your `CUPS_PORT`) on the machine itself.
 Desktop installs of Debian, Ubuntu and Raspberry Pi OS usually run their own CUPS there, and the
 hub's CUPS can't start while it does. Every printer then lives in the hub instead. The helper script
 does this for you:
@@ -94,6 +96,19 @@ does this for you:
 
 The commands that change the system ask for `sudo`. Keep **Avahi** (discovery) and **ipp-usb** running:
 the hub uses both.
+
+**Port 631 already taken, and you want to keep it that way?** Set `CUPS_PORT` in `.env` (e.g.
+`CUPS_PORT=8631`) and run `docker compose up -d`. The hub's CUPS moves to that port and the host's CUPS
+can stay. Things that follow automatically:
+- AirPrint / Mopria / Windows discovery: they announce the new port.
+- The *Add to your computer* addresses on the Print page.
+- The *full CUPS admin* link.
+- The Docker Desktop port mapping.
+- `scripts/linux-host.sh status`.
+
+Printers added **by hand** on laptops need the port in the address, e.g. `http://<server>:8631/printers/<queue>`.
+Keep 631 if you can: it's what clients try by default. Running both CUPS servers also means two sets of
+printers show up in discovery, so name the hub's queues clearly.
 
 **USB printers on Linux:** most USB printers from the last ~8 years (including all-in-ones) support
 *IPP over USB*. `ipp-usb` shares them at `http://localhost:60000`, so the hub can print **and scan**
