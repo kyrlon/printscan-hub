@@ -442,9 +442,12 @@ def detected_scanners():
                ("serial", s["serial"]) if s["serial"] else ("name", _base_name(s.get("name"))))
         groups.setdefault(key, []).append(s)
     for (how, _), members in groups.items():
+        visible = sum(not m["hidden"] for m in members)
         for s in members:
             s["twins"] = [m["connection"] for m in members if m is not s]
             s["twin_by"] = how if len(members) > 1 else None
+            # Warn only while the duplicate is still visible on the Scan page.
+            s["twin_resolved"] = visible <= 1
     return out, data.get("updated", "")
 
 

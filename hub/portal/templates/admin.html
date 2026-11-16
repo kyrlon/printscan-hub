@@ -81,8 +81,9 @@
             {%- if s.serial %}Serial {{ s.serial }}{% endif %}
             {%- if s.serial and s.mac_tag %} · {% endif %}
             {%- if s.mac_tag %}<span title="The [{{ s.mac_tag }}] in the name is the end of the printer's network (MAC) address. HP adds it so identical models can be told apart.">[{{ s.mac_tag }}] = end of MAC address</span>{% endif %}</span>{% endif %}
-          {% if s.twin_by %}<br><span class="alert warn" title="{{ 'Both report the same device ID.' if s.twin_by in ('uuid','serial') else 'Same name apart from the connection, so very likely the same device.' }}">
-            Same {{ 'device' if s.twin_by in ('uuid','serial') else 'device (by name)' }} as: {{ s.twins|join(', ') }}. Hide one.</span>{% endif %}
+          {% if s.twin_by and not s.twin_resolved %}<br><span class="alert warn" title="{{ 'Both report the same device ID.' if s.twin_by in ('uuid','serial') else 'Same name apart from the connection, so very likely the same device.' }}">
+            Same {{ 'device' if s.twin_by in ('uuid','serial') else 'device (by name)' }} as: {{ s.twins|join(', ') }}. Hide one.</span>
+          {% elif s.twin_by %}<br><span class="muted small">Same device as: {{ s.twins|join(', ') }}{% if not s.hidden %} (hidden){% endif %}</span>{% endif %}
           <br><code class="muted small">{{ s.id }}</code></td>
       <td class="small">{{ s.connection }}{% if s.url %}<br><span class="muted">{{ s.url }}</span>{% endif %}</td>
       <td class="small">{{ s.sources|join(', ') or '—' }}{% if s.res_range %}<br><span class="muted">{{ s.res_range }}</span>{% endif %}
