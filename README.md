@@ -143,8 +143,37 @@ the last ~10 years), and click **Add printer**.
 
 ## Installing drivers
 
+### Do you need a driver? Usually not: the `everywhere` driver
+
+`everywhere` is CUPS's built-in driver for **IPP Everywhere**, the standard that lets a computer print
+without a model-specific driver. It's the default when you add a printer. How it works:
+
+1. When you add the printer, CUPS asks it over IPP what it can do: paper sizes, trays, two-sided,
+   color, resolutions and the file formats it accepts.
+2. From the answers, CUPS writes the printer's settings file (a PPD), the same thing a vendor driver
+   would install, so the options match that exact printer.
+3. When you print, CUPS converts the document to a standard format the printer understands
+   (PWG Raster, Apple Raster or PDF).
+
+It's the same technology as **AirPrint** and **Mopria**, so a printer that supports either almost
+certainly works with `everywhere`. That covers most printers from the last ~10 years. USB printers
+on Linux work too, through `ipp-usb`. CUPS itself is moving this way: classic per-model drivers are
+being phased out.
+
+**Limits:**
+- The printer must answer over IPP when you add it, so use an `ipp://`, `ipps://` or `dnssd://…_ipp…`
+  address. `socket://` and `lpd://` addresses can't use it.
+- You get the standard features: paper, trays, two-sided, color, quality. Brand-only extras (toner save,
+  some finishing options) may need the vendor driver.
+- Printers from before about 2013 usually don't support it.
+
+**Use a vendor driver instead** for an older printer, a non-IPP connection, or a printer that prints
+wrongly with `everywhere` (bad margins, a missing feature you need).
+
+### Finding and installing a driver
+
 The image already has `printer-driver-all`, HPLIP, Gutenprint, Foomatic and the
-OpenPrinting PPDs (about 17,000 models). Search for yours under **Admin → Add a printer → Pick a driver**
+OpenPrinting PPDs (about 17,000 models). Search for yours under **Admin → Add a printer → Use a specific driver**
 before installing anything.
 
 If your printer isn't covered, there are three ways to add a driver. All three are
@@ -412,7 +441,7 @@ Ideas for connecting the hub to [Home Assistant](https://www.home-assistant.io/)
 | **Driver** | Software that turns a document into the printer's own language. With `everywhere` (IPP Everywhere), no vendor driver is needed |
 | **Driverless** | Printing or scanning with built-in, standard protocols (IPP Everywhere, AirPrint, eSCL) instead of vendor drivers |
 | **IPP** (Internet Printing Protocol) | The standard network printing protocol. Clients add the hub's printers with `http://<server>:631/printers/<queue>` |
-| **IPP Everywhere** | The driver-free flavour of IPP that most printers from the last ~10 years support. Chosen as the `everywhere` driver |
+| **IPP Everywhere** (`everywhere`) | The driver-free flavour of IPP that most printers from the last ~10 years support (anything with AirPrint or Mopria). CUPS asks the printer what it can do and builds its settings from the answer, so nothing is installed. Needs an `ipp`/`ipps` address. See [Do you need a driver?](#do-you-need-a-driver-usually-not-the-everywhere-driver) |
 | **Job** | One print request. It shows in the queue as pending, printing, completed, canceled or aborted |
 | **PPD** (PostScript Printer Description) | A small file describing a printer's options (trays, duplex, paper sizes). Many Linux drivers come as PPDs |
 | **Queue** | A printer as CUPS knows it, with a name like `home_printer`. One physical printer can have several queues with different settings |

@@ -148,7 +148,9 @@
     <label for="model">Driver</label>
     <input id="model" type="text" name="model" value="{{ prefill_model or 'everywhere' }}">
     <p class="small muted" style="margin:4px 0 0"><code>everywhere</code> is the built-in driverless driver: nothing to install. It works with
-      <code>ipp://</code>, <code>ipps://</code> and <code>dnssd://…_ipp…</code> addresses, which covers most printers from the last ~10 years.</p>
+      <code>ipp://</code>, <code>ipps://</code> and <code>dnssd://…_ipp…</code> addresses, which covers most printers from the last ~10 years.
+      <a href="https://github.com/kyrlon/printscan-hub#do-you-need-a-driver-usually-not-the-everywhere-driver" target="_blank" rel="noopener"
+         title="IPP Everywhere: CUPS asks the printer what it can do (paper, trays, two-sided, color) and builds its settings from the answer. Same technology as AirPrint and Mopria.">What is this? ↗</a></p>
 
     <details class="fold" id="pick-driver" style="margin-top:12px;scroll-margin-top:12px" {% if ppds is not none or needs_driver %}open{% endif %}>
       <summary><span>Use a specific driver
