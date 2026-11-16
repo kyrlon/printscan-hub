@@ -109,6 +109,20 @@
     .inline { display:inline; } .actions { display:flex; gap:6px; flex-wrap:wrap; }
     details summary { cursor:pointer; font-weight:600; }
     details > div { padding-top:8px; }
+    /* Collapsible panel: bordered box, full-width clickable header, turning arrow. */
+    details.fold { border:1px solid var(--line); border-radius:8px; background:var(--card); }
+    details.fold > summary { list-style:none; display:flex; align-items:center; gap:10px;
+                             padding:10px 14px; border-radius:8px; background:var(--bg); user-select:none; }
+    details.fold > summary::-webkit-details-marker { display:none; }
+    details.fold > summary::before { content:"\25B8"; color:var(--muted); font-size:14px; transition:transform .15s; }
+    details.fold[open] > summary::before { transform:rotate(90deg); }
+    details.fold > summary:hover { background:var(--line); }
+    details.fold > summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    details.fold[open] > summary { border-bottom:1px solid var(--line); border-radius:8px 8px 0 0; }
+    details.fold > summary .hint { display:block; font-weight:400; color:var(--muted); font-size:13px; margin-top:2px; }
+    details.fold > summary .pill { margin-left:auto; font-weight:500; }
+    details.fold > :not(summary) { padding:4px 14px 12px; }
+    details.fold > .table-scroll { margin-top:0 !important; }
   </style>
 </head>
 <body>

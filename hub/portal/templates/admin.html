@@ -148,8 +148,10 @@
     {% if devices %}{{ device_rows(devices) }}
     {% elif not probe or devices_added %}<p class="muted" style="margin-top:10px">{% if devices_added %}No new printers found: everything found is already added (see below).{% else %}Nothing found. Look the printer up by IP address above.{% endif %}</p>{% endif %}
     {% if devices_added %}
-    <details style="margin-top:10px">
-      <summary class="small">Already added ({{ devices_added|length }}): these connections, or the same printer reached another way, already have a queue</summary>
+    <details class="fold" style="margin-top:12px">
+      <summary><span>Already added
+        <span class="hint">These connections, or the same printer reached another way, already have a queue.</span></span>
+        <span class="pill">{{ devices_added|length }}</span></summary>
       {{ device_rows(devices_added) }}
     </details>
     {% endif %}
@@ -234,7 +236,7 @@
       {% endif %}
     </table></div>
 
-    <details style="margin-top:12px"><summary>Brother: where to enter this</summary><div class="small">
+    <details class="fold" style="margin-top:12px"><summary>Brother: where to enter this</summary><div class="small">
       <ol>
         <li>Open the printer's <strong>Device settings</strong> (link next to the printer above) and log in. The default password is on a label on the printer, marked “Pwd”.</li>
         <li><strong>Scan → Scan to FTP/SFTP/Network/SharePoint</strong>: set Profile 1 to <strong>FTP</strong> and click Submit.</li>
@@ -333,9 +335,9 @@
     </form>
   </div>
 
-  <details style="margin-top:16px"><summary>Remembered Debian packages</summary>
+  <details class="fold" style="margin-top:16px"><summary>Remembered Debian packages</summary>
     <div><pre>{{ apt_list or '(none)' }}</pre></div></details>
-  <details style="margin-top:8px"><summary>Install log</summary>
+  <details class="fold" style="margin-top:8px"><summary>Install log</summary>
     <div><pre>{{ log_tail or '(empty)' }}</pre></div></details>
 </div>
 {% endblock %}
