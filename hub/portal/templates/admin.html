@@ -126,7 +126,7 @@
     Picked {% if prefill_info %}<strong>{{ prefill_info }}</strong>{% else %}<code>{{ prefill_uri }}</code>{% endif %}.
     {% if needs_driver %}
       This connection needs a driver for your model: pick one in the <strong>Driver</strong> list below{% if not driver_choices %}
-      (none matched your model, so search under <em>Use a specific driver</em>){% endif %}, or pick a
+      (none matched your model automatically, so search for it there){% endif %}, or pick a
       <em>(driverless)</em> / <code>ipp</code> entry in step 1 instead.
     {% else %}
       Check the names below, then press <strong>Add printer</strong>. Nothing is set up until you do.
@@ -149,67 +149,95 @@
     <label for="model">Driver</label>
     {% set picked = prefill_model if prefill_model and prefill_model != 'everywhere' else '' %}
     {% set choice_names = driver_choices|map(attribute='name')|list %}
+    {% set start_search = needs_driver and not picked and not driver_choices %}
     <select id="model" name="model" required>
-      {% if needs_driver and not picked %}<option value="" selected disabled>Choose a driver…</option>{% endif %}
+      {% if needs_driver and not picked and driver_choices %}<option value="" selected disabled>Choose a driver…</option>{% endif %}
       {% if prefill_uri and not prefill_driverless %}
         <option value="everywhere" disabled>Driverless (everywhere): not available for this address</option>
       {% else %}
         <option value="everywhere" {% if not picked %}selected{% endif %}>Driverless (everywhere): recommended, nothing to install</option>
       {% endif %}
-      {% if picked and picked not in choice_names %}
-        <option value="{{ picked }}" selected>{{ picked }}</option>
-      {% endif %}
+      <optgroup label="Chosen" id="model-chosen" {% if not (picked and picked not in choice_names) %}hidden{% endif %}>
+        {% if picked and picked not in choice_names %}<option value="{{ picked }}" selected>{{ picked }}</option>{% endif %}
+      </optgroup>
       {% if driver_choices %}
       <optgroup label="Installed drivers for {{ prefill_info or 'this printer' }}">
         {% for d in driver_choices %}<option value="{{ d.name }}" {% if d.name == picked %}selected{% endif %}>{{ d.model }}</option>{% endfor %}
       </optgroup>
       {% endif %}
-      <option value="__other">Other… (type a driver name)</option>
+      <option value="__search" {% if start_search %}selected{% endif %}>Search installed drivers…</option>
     </select>
-    <input id="model_custom" type="text" name="model_custom" placeholder="Driver name, e.g. drv:///hpcups.drv/hp-envy_photo_7100_series.ppd" hidden style="margin-top:6px">
-    <script>
-    (function () {
-      var sel = document.getElementById('model'), other = document.getElementById('model_custom');
-      function sync() { var on = sel.value === '__other'; other.hidden = !on; other.required = on; if (on) other.focus(); }
-      sel.addEventListener('change', sync);
-    })();
-    </script>
-    <p class="small muted" style="margin:4px 0 0"><code>everywhere</code> is the built-in driverless driver: nothing to install. It works with
+
+    <div id="driver-search" class="driver-search" {% if not start_search %}hidden{% endif %}>
+      <input id="driver-q" type="search" autocomplete="off" value="{{ prefill_info|replace('(driverless)', '')|replace('(USB)', '')|trim if start_search else '' }}"
+             placeholder="Model, e.g. brother hl-l2350 (or paste an exact driver name)">
+      <div id="driver-results" class="driver-results" role="listbox" aria-label="Matching drivers"></div>
+      <p id="driver-status" class="small muted" style="margin:6px 0 0" aria-live="polite"></p>
+    </div>
+    <p class="small muted" style="margin:6px 0 0"><code>everywhere</code> is the built-in driverless driver: nothing to install. It works with
       <code>ipp://</code>, <code>ipps://</code> and <code>dnssd://…_ipp…</code> addresses, which covers most printers from the last ~10 years.
+      Pick a specific driver only for <code>socket://</code>, <code>lpd://</code> or older USB printers, or if <code>everywhere</code> prints wrongly.
       <a href="https://github.com/kyrlon/printscan-hub#do-you-need-a-driver-usually-not-the-everywhere-driver" target="_blank" rel="noopener"
          title="IPP Everywhere: CUPS asks the printer what it can do (paper, trays, two-sided, color) and builds its settings from the answer. Same technology as AirPrint and Mopria.">What is this? ↗</a></p>
+    <script>
+    // "Search installed drivers…": search as you type, click a result to choose it.
+    (function () {
+      var sel = document.getElementById('model'), box = document.getElementById('driver-search');
+      var q = document.getElementById('driver-q'), list = document.getElementById('driver-results');
+      var status = document.getElementById('driver-status'), chosen = document.getElementById('model-chosen');
+      var url = {{ url_for('admin_driver_find')|tojson }}, timer = null, seq = 0;
 
-    <details class="fold" id="pick-driver" style="margin-top:12px;scroll-margin-top:12px" {% if ppds is not none or needs_driver %}open{% endif %}>
-      <summary><span>Use a specific driver
-        <span class="hint">Only for <code>socket://</code>, <code>lpd://</code> or older USB printers, or if <code>everywhere</code> prints wrongly.</span></span></summary>
-      <div>
-        {# These belong to the separate driver-search form below (forms can't nest). #}
-        <div class="actions">
-          <input form="driver-search" type="text" name="q" value="{{ q }}" placeholder="Search installed drivers, e.g. brother hl-l2350" style="flex:1;min-width:220px">
-          <button form="driver-search" class="secondary" type="submit">Search drivers</button>
-        </div>
-        {% if ppds is not none %}
-          {% if ppds %}
-          <div class="table-scroll" style="margin-top:10px;max-height:300px;overflow-y:auto"><table>
-            {% for d in ppds %}
-            <tr><td class="small">{{ d.model }}<br><code class="muted">{{ d.name }}</code></td>
-                <td><a class="btn secondary" style="padding:3px 10px;font-size:13px"
-                       href="{{ url_for('admin', uri=prefill_uri, model=d.name, q=q, info=prefill_info) }}#add-form">Use</a></td></tr>
-            {% endfor %}
-          </table></div>
-          {% else %}<p class="muted">No installed driver matches “{{ q }}”. Install one in the <strong>Drivers</strong> section below, then search again.</p>{% endif %}
-        {% endif %}
-      </div>
-    </details>
+      function choose(name, label) {
+        var opt = Array.prototype.find.call(sel.options, function (o) { return o.value === name; });
+        if (!opt) {
+          opt = new Option(label || name, name);
+          chosen.innerHTML = ''; chosen.appendChild(opt); chosen.hidden = false;
+        }
+        opt.selected = true;
+        sync();
+      }
+      function row(name, label, note) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'driver-row'; b.setAttribute('role', 'option');
+        var strong = document.createElement('strong'); strong.textContent = label;
+        var small = document.createElement('span'); small.textContent = note || name;
+        b.appendChild(strong); b.appendChild(small);
+        b.addEventListener('click', function () { choose(name, label); });
+        return b;
+      }
+      function search() {
+        var text = q.value.trim(), mine = ++seq;
+        list.innerHTML = '';
+        if (text.length < 2) { status.textContent = 'Type at least 2 letters of the make or model.'; return; }
+        status.textContent = 'Searching…';
+        fetch(url + '?q=' + encodeURIComponent(text), { credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (mine !== seq) return;              // a newer search is running
+            if (/[:\/]|\.ppd/i.test(text)) list.appendChild(row(text, 'Use “' + text + '” exactly as typed', 'exact driver name'));
+            data.results.forEach(function (d) { list.appendChild(row(d.name, d.model, d.name)); });
+            status.textContent = data.results.length
+              ? data.results.length + (data.more ? '+ matches, showing the first ' + data.results.length + '. Add more words to narrow it down.' : ' matching driver' + (data.results.length === 1 ? '' : 's') + '.')
+              : 'No installed driver matches. Install one in the Drivers section below, then search again.';
+          })
+          .catch(function () { if (mine === seq) status.textContent = 'Search failed. Reload the page and try again.'; });
+      }
+      function sync() {
+        var searching = sel.value === '__search';
+        box.hidden = !searching;
+        sel.setCustomValidity(searching ? 'Pick a driver from the search results, or choose another option.' : '');
+        if (searching) { q.focus(); if (q.value.trim()) search(); }
+      }
+      q.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(search, 250); });
+      q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); search(); } });
+      sel.addEventListener('change', sync);
+      if (!box.hidden) sync();
+    })();
+    </script>
 
     <div class="checks"><label><input type="checkbox" name="default" value="1"> Make this the default printer</label></div>
     <button type="submit" style="margin-top:14px">Add printer</button>
-  </form>
-  <form id="driver-search" method="get" action="{{ url_for('admin') }}#pick-driver" data-busy="Searching…">
-    {% if prefill_uri %}<input type="hidden" name="uri" value="{{ prefill_uri }}">{% endif %}
-    {% if prefill_info %}<input type="hidden" name="info" value="{{ prefill_info }}">{% endif %}
-  </form>
-</div>
+  </form></div>
 
 <div class="card" id="drivers">
   <h2>Drivers</h2>

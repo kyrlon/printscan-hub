@@ -140,6 +140,15 @@
       .tabs { flex-wrap:nowrap; gap:0; }
       .tabs a { flex:1; justify-content:center; padding:8px 4px; gap:5px; font-size:14px; }
     }
+    /* Driver search under the Driver list (Admin → Add a printer). */
+    .driver-search { margin-top:8px; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); }
+    .driver-results { max-height:280px; overflow-y:auto; margin-top:6px; }
+    .driver-results:empty { display:none; }
+    .driver-row { display:block; width:100%; text-align:left; background:var(--card); color:var(--text);
+                  border:1px solid var(--line); border-radius:6px; padding:7px 10px; margin-top:4px; font-weight:400; }
+    .driver-row:hover, .driver-row:focus-visible { border-color:var(--accent); }
+    .driver-row strong { display:block; font-size:14px; }
+    .driver-row span { display:block; font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
     /* Collapsible panel: bordered box, full-width clickable header, turning arrow. */
     details.fold { border:1px solid var(--line); border-radius:8px; background:var(--card); }
     details.fold > summary { list-style:none; display:flex; align-items:center; gap:10px;

@@ -173,7 +173,7 @@ wrongly with `everywhere` (bad margins, a missing feature you need).
 ### Finding and installing a driver
 
 The image already has `printer-driver-all`, HPLIP, Gutenprint, Foomatic and the
-OpenPrinting PPDs (about 17,000 models). Search for yours under **Admin → Add a printer → Use a specific driver**
+OpenPrinting PPDs (about 17,000 models). Search for yours under **Admin → Add a printer → Driver → Search installed drivers…**
 before installing anything.
 
 If your printer isn't covered, there are three ways to add a driver. All three are

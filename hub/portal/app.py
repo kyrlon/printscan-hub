@@ -994,7 +994,7 @@ def cancel_job(job_id):
 @require_admin
 def admin():
     printers = list_printers()
-    devices, ppds = None, None
+    devices = None
     if request.args.get("discover"):
         try:
             raw = conn().getDevices(timeout=10)
@@ -1042,22 +1042,13 @@ def admin():
         devices_added = [d for d in devices if d["added_as"] or d.get("same_as")]
         devices = [d for d in devices if not (d["added_as"] or d.get("same_as"))]
 
-    q = request.args.get("q", "").strip()
-    if q:
-        terms = q.lower().split()
-        ppds = [{"name": n, "model": a.get("ppd-make-and-model", n)}
-                for n, a in get_ppds().items()
-                if all(t in (a.get("ppd-make-and-model", "") + " " + n).lower() for t in terms)]
-        ppds.sort(key=lambda p: (p["model"], _ppd_source_rank(p["name"])))
-        ppds = dedupe_drivers(ppds)[:300]
-
     log_tail = ""
     log = DRIVERS_DIR / "install.log"
     if log.exists():
         log_tail = "\n".join(log.read_text(errors="replace").splitlines()[-60:])
 
     return render_template(
-        "admin.html", printers=printers, devices=devices, ppds=ppds, q=q, probe=probe,
+        "admin.html", printers=printers, devices=devices, probe=probe,
         users=store.list_users(), allow_signup=ALLOW_SIGNUP, limits=scanproxy.LIMITS,
         scanners=scanners, scanners_updated=scanners_updated,
         devices_added=devices_added,
@@ -1187,6 +1178,26 @@ def admin_driver_apt():
 def admin_driver_sync():
     rc, out = run_hub_driver("sync")
     return render_template("result.html", title="Driver sync", ok=rc == 0, output=out)
+
+
+@app.get("/admin/drivers/find")
+@require_admin
+def admin_driver_find():
+    """Installed drivers matching every word typed (JSON, for the Driver search box)."""
+    terms = request.args.get("q", "").lower().split()[:8]
+    if not terms or len(" ".join(terms)) < 2:
+        return {"results": [], "more": False}
+    try:
+        ppds = get_ppds()
+    except (cups.IPPError, RuntimeError) as e:
+        return {"results": [], "more": False, "error": str(e)}, 503
+    hits = [{"name": n, "model": a.get("ppd-make-and-model", n)}
+            for n, a in ppds.items()
+            if n not in ("raw", "everywhere") and not n.startswith("driverless")
+            and all(t in (a.get("ppd-make-and-model", "") + " " + n).lower() for t in terms)]
+    hits.sort(key=lambda p: (p["model"].lower(), _ppd_source_rank(p["name"])))
+    hits = dedupe_drivers(hits)
+    return {"results": hits[:50], "more": len(hits) > 50}
 
 
 @app.get("/admin/drivers/search")
