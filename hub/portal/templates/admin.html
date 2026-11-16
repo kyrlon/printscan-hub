@@ -289,14 +289,29 @@
       {% endif %}
     </table></div>
 
-    <details class="fold" style="margin-top:12px"><summary>Brother: where to enter this</summary><div class="small">
+    {% set web_scanners = (scanners or [])|selectattr('web')|list %}
+    {% set has_brother = 'brother' in ((scanners or [])|map(attribute='name')|join(' ')|lower) %}
+    <details class="fold" style="margin-top:12px"><summary>Where to enter this on the printer</summary><div class="small">
       <ol>
-        <li>Open the printer's <strong>Device settings</strong> (link next to the printer above) and log in. The default password is on a label on the printer, marked “Pwd”.</li>
+        <li>Open the printer's settings page in a browser and log in{% if web_scanners %}:
+          {% for s in web_scanners|unique(attribute='web') %}<a href="{{ s.web }}" target="_blank" rel="noopener">{{ s.name }} ↗</a>{% if not loop.last %} · {% endif %}{% endfor %}{% endif %}.
+          The admin password is often on a label on the printer.</li>
+        <li>Find the scan destination settings. Brands call it <strong>Scan to FTP</strong>, <strong>Scan to Network Folder</strong>,
+          <strong>Scan to Folder</strong>, or an <strong>Address book → FTP destination</strong>.</li>
+        <li>Create a profile named “PrintScan Hub” with the values above, and save.</li>
+        <li>On the printer's screen: <strong>Scan → FTP / Network → PrintScan Hub</strong>.</li>
+      </ol>
+      <p class="muted">Some home printers can only scan to email or to the maker's app. If yours has no FTP or network-folder option,
+        use the <a href="{{ url_for('scan') }}">Scan</a> page instead: it works with any scanner listed above.</p>
+      {% if has_brother %}
+      <p style="margin-bottom:4px"><strong>Brother</strong> (detected on your network):</p>
+      <ol>
+        <li>Settings page → log in with the password marked “Pwd” on the printer's label.</li>
         <li><strong>Scan → Scan to FTP/SFTP/Network/SharePoint</strong>: set Profile 1 to <strong>FTP</strong> and click Submit.</li>
-        <li><strong>Scan → Scan to FTP/SFTP/Network/SharePoint Profile → Profile 1</strong>: enter the values above. Name it “PrintScan Hub”.</li>
+        <li><strong>Scan → Scan to FTP/SFTP/Network/SharePoint Profile → Profile 1</strong>: enter the values above.</li>
         <li>On the printer: <strong>Scan → to FTP/SFTP → PrintScan Hub → Start</strong>.</li>
       </ol>
-      <p>Other brands call this “Scan to FTP”, “Scan to Folder”, or “Address book → FTP destination”. The values are the same.</p>
+      {% endif %}
     </div></details>
     {% if env.vm %}
       <p class="small muted">Running on {{ env.vm }}: if the printer reports “Server timeout” or “Connection failed”, allow inbound ports

@@ -436,7 +436,9 @@ def detected_scanners():
         res = [r for r in d.get("resolutions", []) if isinstance(r, (int, float))]
         ident = scanner_identity(url)
         tag = re.search(r"\[([0-9A-Fa-f]{6})\]", d.get("name", ""))
+        local = bool(host) and host.strip("[]") in ("localhost", "127.0.0.1", "::1")
         out.append({**d, "hidden": d.get("key") in hidden, "connection": conn_label,
+                    "web": f"http://{host}/" if host and not local else None,
                     "res_range": f"{min(res)}–{max(res)} dpi" if res else "",
                     "serial": ident.get("serial"), "uuid": ident.get("uuid"),
                     "mac_tag": tag.group(1).upper() if tag else None})
