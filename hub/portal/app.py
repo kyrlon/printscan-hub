@@ -957,7 +957,7 @@ def admin():
             flash("Enter an IP address or hostname, e.g. 192.168.1.50", "error")
 
     # Mark devices that already have a queue; the scan list hides them unless ?all=1.
-    hidden_added = 0
+    devices_added = []
     scanners, scanners_updated = detected_scanners()
     if devices:
         serials = serial_lookup(scanners)
@@ -966,11 +966,16 @@ def admin():
             d["serial"] = device_serial(d["uri"], d.get("device_id"), serials)
             if "suggest" not in d:
                 d["suggest"] = "everywhere" if driverless_uri(d["uri"]) else ""
-        if request.args.get("discover") and not request.args.get("all"):
-            hidden_added = sum(1 for d in devices if d["added_as"])
-            # Serial ports and the braille driver aren't printers people want here.
-            devices = [d for d in devices if not d["added_as"]
-                       and not d["uri"].startswith(("serial:", "cups-brf:"))]
+        # Other connections to a printer that already has a queue (same serial,
+        # e.g. the Wi-Fi side of a USB printer) belong with the added ones.
+        added_serials = {d["serial"]: d["added_as"] for d in devices if d["added_as"] and d["serial"]}
+        for d in devices:
+            if not d["added_as"] and d["serial"] in added_serials:
+                d["same_as"] = added_serials[d["serial"]]
+        # Serial ports and the braille driver aren't printers people want here.
+        devices = [d for d in devices if not d["uri"].startswith(("serial:", "cups-brf:"))]
+        devices_added = [d for d in devices if d["added_as"] or d.get("same_as")]
+        devices = [d for d in devices if not (d["added_as"] or d.get("same_as"))]
 
     q = request.args.get("q", "").strip()
     if q:
@@ -990,7 +995,7 @@ def admin():
         "admin.html", printers=printers, devices=devices, ppds=ppds, q=q, probe=probe,
         users=store.list_users(), allow_signup=ALLOW_SIGNUP, limits=scanproxy.LIMITS,
         scanners=scanners, scanners_updated=scanners_updated,
-        hidden_added=hidden_added, show_all=bool(request.args.get("all")),
+        devices_added=devices_added,
         prefill_uri=request.args.get("uri", ""), prefill_model=request.args.get("model", ""),
         prefill_info=request.args.get("info", ""),
         prefill_name=queue_name_from(request.args.get("info", "")),

@@ -126,25 +126,32 @@
   </form>
   <p class="small muted" style="margin:4px 0 0">The IP address is shown on the printer's screen (usually Settings → Network) or on a printed network configuration page.</p>
   {% if devices is not none %}
-    {% if devices %}
+    {% macro device_rows(list) %}
     <div class="table-scroll" style="margin-top:10px"><table>
       <tr><th>Device</th><th>URI</th><th></th></tr>
-      {% for d in devices %}
-      <tr {% if d.added_as %}style="opacity:.6"{% endif %}>
+      {% for d in list %}
+      <tr>
           <td>{{ d.info }}<br><span class="muted small">{{ d.model }}{% if d.serial %} · Serial {{ d.serial }}{% endif %}</span></td>
           <td class="small"><code>{{ d.uri }}</code></td>
-          <td>{% if d.added_as %}<span class="pill" title="This device already has a print queue">added as {{ d.added_as }}</span>
-              {% else %}<a class="btn secondary" style="padding:3px 10px;font-size:13px"
+          <td style="white-space:nowrap">
+            {% if d.added_as %}<span class="pill" title="This exact connection already has a print queue">added as {{ d.added_as }}</span>
+            {% else %}
+              {% if d.same_as %}<span class="pill" title="Same serial number as the printer behind this queue, reached another way (e.g. Wi-Fi instead of USB). Adding it gives a second queue for the same printer.">same printer as {{ d.same_as }}</span><br>{% endif %}
+              <a class="btn secondary" style="padding:3px 10px;font-size:13px;{% if d.same_as %}margin-top:4px{% endif %}"
                  href="{{ url_for('admin', uri=d.uri, model=d.suggest or prefill_model, info=d.info) }}#add-form"
-                 title="Fill in step 3 below with this printer; then press Add printer there">Add</a>{% endif %}</td></tr>
+                 title="Fill in step 3 below with this printer; then press Add printer there">Add</a>
+            {% endif %}</td></tr>
       {% endfor %}
     </table></div>
-    {% elif not probe %}<p class="muted">{% if hidden_added %}No new printers found: every printer found is already added.{% else %}Nothing found. Look the printer up by IP address above.{% endif %}</p>{% endif %}
-    {% if hidden_added %}
-      <p class="small muted" style="margin:6px 0 0">{{ hidden_added }} already-added printer{{ 's' if hidden_added != 1 }} hidden.
-        <a href="{{ url_for('admin', discover=1, all=1, model=prefill_model) }}">Show all</a></p>
-    {% elif show_all %}
-      <p class="small muted" style="margin:6px 0 0"><a href="{{ url_for('admin', discover=1, model=prefill_model) }}">Hide already-added printers</a></p>
+    {% endmacro %}
+
+    {% if devices %}{{ device_rows(devices) }}
+    {% elif not probe or devices_added %}<p class="muted" style="margin-top:10px">{% if devices_added %}No new printers found: everything found is already added (see below).{% else %}Nothing found. Look the printer up by IP address above.{% endif %}</p>{% endif %}
+    {% if devices_added %}
+    <details style="margin-top:10px">
+      <summary class="small">Already added ({{ devices_added|length }}): these connections, or the same printer reached another way, already have a queue</summary>
+      {{ device_rows(devices_added) }}
+    </details>
     {% endif %}
   {% endif %}
 
