@@ -125,8 +125,9 @@
   <div class="flash {{ 'warn' if needs_driver else 'ok' }}" style="margin:6px 0 10px">
     Picked {% if prefill_info %}<strong>{{ prefill_info }}</strong>{% else %}<code>{{ prefill_uri }}</code>{% endif %}.
     {% if needs_driver %}
-      This connection needs a driver for your model: search for it under <em>Use a specific driver</em> below and press <em>Use</em>,
-      or pick a <em>(driverless)</em> / <code>ipp</code> entry in step 1 instead.
+      This connection needs a driver for your model: pick one in the <strong>Driver</strong> list below{% if not driver_choices %}
+      (none matched your model, so search under <em>Use a specific driver</em>){% endif %}, or pick a
+      <em>(driverless)</em> / <code>ipp</code> entry in step 1 instead.
     {% else %}
       Check the names below, then press <strong>Add printer</strong>. Nothing is set up until you do.
     {% endif %}
@@ -146,7 +147,33 @@
     <input id="uri" type="text" name="uri" required value="{{ prefill_uri }}"
            placeholder="ipp://192.168.1.50/ipp/print   socket://192.168.1.50:9100   usb://Brother/...">
     <label for="model">Driver</label>
-    <input id="model" type="text" name="model" value="{{ prefill_model or 'everywhere' }}">
+    {% set picked = prefill_model if prefill_model and prefill_model != 'everywhere' else '' %}
+    {% set choice_names = driver_choices|map(attribute='name')|list %}
+    <select id="model" name="model" required>
+      {% if needs_driver and not picked %}<option value="" selected disabled>Choose a driver…</option>{% endif %}
+      {% if prefill_uri and not prefill_driverless %}
+        <option value="everywhere" disabled>Driverless (everywhere): not available for this address</option>
+      {% else %}
+        <option value="everywhere" {% if not picked %}selected{% endif %}>Driverless (everywhere): recommended, nothing to install</option>
+      {% endif %}
+      {% if picked and picked not in choice_names %}
+        <option value="{{ picked }}" selected>{{ picked }}</option>
+      {% endif %}
+      {% if driver_choices %}
+      <optgroup label="Installed drivers for {{ prefill_info or 'this printer' }}">
+        {% for d in driver_choices %}<option value="{{ d.name }}" {% if d.name == picked %}selected{% endif %}>{{ d.model }}</option>{% endfor %}
+      </optgroup>
+      {% endif %}
+      <option value="__other">Other… (type a driver name)</option>
+    </select>
+    <input id="model_custom" type="text" name="model_custom" placeholder="Driver name, e.g. drv:///hpcups.drv/hp-envy_photo_7100_series.ppd" hidden style="margin-top:6px">
+    <script>
+    (function () {
+      var sel = document.getElementById('model'), other = document.getElementById('model_custom');
+      function sync() { var on = sel.value === '__other'; other.hidden = !on; other.required = on; if (on) other.focus(); }
+      sel.addEventListener('change', sync);
+    })();
+    </script>
     <p class="small muted" style="margin:4px 0 0"><code>everywhere</code> is the built-in driverless driver: nothing to install. It works with
       <code>ipp://</code>, <code>ipps://</code> and <code>dnssd://…_ipp…</code> addresses, which covers most printers from the last ~10 years.
       <a href="https://github.com/kyrlon/printscan-hub#do-you-need-a-driver-usually-not-the-everywhere-driver" target="_blank" rel="noopener"

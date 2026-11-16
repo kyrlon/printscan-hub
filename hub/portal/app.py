@@ -714,6 +714,32 @@ def get_ppds():
     return _ppd_cache["data"]
 
 
+def suggest_drivers(info, limit=12):
+    """Installed drivers whose model matches a printer name like 'HP ENVY Photo 7100 series'."""
+    clean = re.sub(r"\[[0-9A-Fa-f]{6}\]|\((usb|driverless|network)\)", " ", info or "", flags=re.I)
+    words = [w for w in re.findall(r"[a-z0-9][a-z0-9-]*", clean.lower())
+             if w not in ("series", "printer", "all-in-one", "mfp", "aio")]
+    if not words:
+        return []
+    numbers = [w for w in words if any(ch.isdigit() for ch in w)]
+    try:
+        ppds = get_ppds()
+    except (cups.IPPError, RuntimeError):
+        return []
+    hits = []
+    for name, a in ppds.items():
+        if name in ("everywhere", "raw") or name.startswith("driverless:"):
+            continue
+        text = (a.get("ppd-make-and-model", "") + " " + name).lower()
+        if numbers and not all(n in text for n in numbers):
+            continue                       # the model number has to match
+        score = sum(w in text for w in words)
+        if score >= max(2, len(words) // 2):
+            hits.append((-score, a.get("ppd-make-and-model", name), name))
+    hits.sort()
+    return [{"name": n, "model": m} for _, m, n in hits[:limit]]
+
+
 # ----------------------------------------------------------------- public ---
 @app.get("/healthz")
 def healthz():
@@ -1003,6 +1029,7 @@ def admin():
         prefill_info=request.args.get("info", ""),
         prefill_name=queue_name_from(request.args.get("info", "")),
         prefill_driverless=driverless_uri(request.args.get("uri", "")),
+        driver_choices=suggest_drivers(request.args.get("info", "")) if request.args.get("uri") else [],
         log_tail=log_tail, weak_password=ADMIN_PASSWORD in ("changeme", "admin", "password"),
         apt_list=(DRIVERS_DIR / "apt-packages.txt").read_text() if (DRIVERS_DIR / "apt-packages.txt").exists() else "",
     )
@@ -1013,7 +1040,10 @@ def admin():
 def admin_add_printer():
     name = request.form.get("name", "").strip()
     uri = request.form.get("uri", "").strip()
-    model = request.form.get("model", "").strip() or "everywhere"
+    model = request.form.get("model", "").strip()
+    if model == "__other":                  # "Other…" in the driver list: typed by hand
+        model = request.form.get("model_custom", "").strip()
+    model = model or "everywhere"
     desc = request.form.get("desc", "").strip()[:127]
     loc = request.form.get("location", "").strip()[:127]
     if not NAME_RE.match(name):
