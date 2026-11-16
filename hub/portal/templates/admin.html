@@ -23,7 +23,7 @@
 {% endif %}
 {% if weak_password %}<div class="flash error">You are using a weak ADMIN_PASSWORD. Change it in <code>.env</code> and run <code>docker compose up -d</code>.</div>{% endif %}
 
-<div class="card">
+<div class="card" id="printers">
   <h1>Printers</h1>
   <p class="muted small">Enabled printers are shared on the network and offered on the Print page. <strong>Disable</strong>
     keeps a printer's settings but stops jobs and hides it everywhere until you enable it again. For advanced settings (default paper size, trays, classes) use the
@@ -108,18 +108,18 @@
   </form>
 </div>
 
-<div class="card">
+<div class="card" id="add-printer" style="scroll-margin-top:12px">
   <h2>Add a printer</h2>
 
   <label>1. Find the printer, then press <em>Add</em> next to it</label>
-  <form method="get" action="{{ url_for('admin') }}" class="actions" data-busy="Searching…">
+  <form method="get" action="{{ url_for('admin') }}#add-printer" class="actions" data-busy="Searching…">
     <input type="hidden" name="discover" value="1">
     {% if prefill_model %}<input type="hidden" name="model" value="{{ prefill_model }}">{% endif %}
     <button class="secondary" type="submit">Scan network &amp; USB for printers</button>
     <span class="muted small" style="align-self:center">takes about 10 seconds</span>
   </form>
   {% if env.vm %}<p class="small muted" style="margin:6px 0 0">On {{ env.vm }} the network scan can't see your LAN, so look the printer up by IP address below.</p>{% endif %}
-  <form method="get" action="{{ url_for('admin') }}" class="actions" style="margin-top:10px" data-busy="Looking up…">
+  <form method="get" action="{{ url_for('admin') }}#add-printer" class="actions" style="margin-top:10px" data-busy="Looking up…">
     {% if prefill_model %}<input type="hidden" name="model" value="{{ prefill_model }}">{% endif %}
     <input type="text" name="probe" value="{{ probe }}" placeholder="…or the printer's IP address / hostname, e.g. 192.168.1.50" style="flex:1;min-width:220px">
     <button class="secondary" type="submit">Look up</button>
@@ -155,8 +155,8 @@
     {% endif %}
   {% endif %}
 
-  <label>2. Pick a driver <span class="muted" style="font-weight:400">(usually skip this: <code>everywhere</code> works for modern printers; needed for <code>socket://</code>, <code>lpd://</code> and some USB addresses)</span></label>
-  <form method="get" action="{{ url_for('admin') }}" class="actions">
+  <label id="pick-driver" style="scroll-margin-top:12px">2. Pick a driver <span class="muted" style="font-weight:400">(usually skip this: <code>everywhere</code> works for modern printers; needed for <code>socket://</code>, <code>lpd://</code> and some USB addresses)</span></label>
+  <form method="get" action="{{ url_for('admin') }}#pick-driver" class="actions" data-busy="Searching…">
     {% if prefill_uri %}<input type="hidden" name="uri" value="{{ prefill_uri }}">{% endif %}
     {% if prefill_info %}<input type="hidden" name="info" value="{{ prefill_info }}">{% endif %}
     <input type="text" name="q" value="{{ q }}" placeholder="Search installed drivers, e.g. brother hl-l2350" style="flex:1;min-width:220px">

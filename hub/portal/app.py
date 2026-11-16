@@ -1016,10 +1016,10 @@ def admin_add_printer():
     loc = request.form.get("location", "").strip()[:127]
     if not NAME_RE.match(name):
         flash("Queue name may only contain letters, numbers, - and _ (no spaces).", "error")
-        return redirect(url_for("admin", uri=uri, model=model))
+        return redirect(url_for("admin", uri=uri, model=model) + "#add-form")
     if not re.match(r"^[a-z][a-z0-9+.-]*:", uri) or len(uri) > 1024:
         flash("Enter a valid device URI, e.g. ipp://192.168.1.50/ipp/print or socket://192.168.1.50:9100", "error")
-        return redirect(url_for("admin", model=model))
+        return redirect(url_for("admin", model=model) + "#add-form")
 
     cmd = ["lpadmin", "-p", name, "-E", "-v", uri, "-m", model,
            "-o", "printer-is-shared=true", "-o", "printer-error-policy=retry-job"]
@@ -1032,13 +1032,13 @@ def admin_add_printer():
         hint = (" The printer did not answer as an IPP Everywhere device, so pick a specific driver instead."
                 if model == "everywhere" else "")
         flash(f"Adding printer failed: {(p.stderr or p.stdout).strip()}{hint}", "error")
-        return redirect(url_for("admin", uri=uri, model=model))
+        return redirect(url_for("admin", uri=uri, model=model) + "#add-form")
     subprocess.run(["cupsenable", name], capture_output=True)
     subprocess.run(["cupsaccept", name], capture_output=True)
     if request.form.get("default"):
         conn().setDefault(name)
     flash(f"Printer {name} added and shared.", "ok")
-    return redirect(url_for("admin"))
+    return redirect(url_for("admin") + "#printers")
 
 
 @app.post("/admin/printers/<name>/<action>")
@@ -1078,7 +1078,7 @@ def admin_printer_action(name, action):
             abort(404)
     except cups.IPPError as e:
         flash(f"{action} failed: {e}", "error")
-    return redirect(url_for("admin"))
+    return redirect(url_for("admin") + "#printers")
 
 
 @app.post("/admin/drivers/upload")
@@ -1087,7 +1087,7 @@ def admin_driver_upload():
     files = [f for f in request.files.getlist("files") if f and f.filename]
     if not files:
         flash("Choose one or more driver files.", "error")
-        return redirect(url_for("admin"))
+        return redirect(url_for("admin") + "#drivers")
     outputs, ok = [], True
     with tempfile.TemporaryDirectory(prefix="drv-") as tmp:
         for f in files:
@@ -1109,7 +1109,7 @@ def admin_driver_apt():
     pkgs = request.form.get("packages", "").split()
     if not pkgs or not all(re.match(r"^[a-z0-9][a-z0-9+.:-]+$", p) for p in pkgs):
         flash("Enter Debian package names separated by spaces, e.g. printer-driver-brlaser", "error")
-        return redirect(url_for("admin"))
+        return redirect(url_for("admin") + "#drivers")
     rc, out = run_hub_driver("apt", *pkgs)
     return render_template("result.html", title="Package install", ok=rc == 0, output=out)
 
@@ -1127,7 +1127,7 @@ def admin_driver_search():
     term = request.args.get("term", "").strip()
     if not re.match(r"^[A-Za-z0-9 ._+-]{2,60}$", term):
         flash("Search term should be 2-60 letters/numbers.", "error")
-        return redirect(url_for("admin"))
+        return redirect(url_for("admin") + "#drivers")
     rc, out = run_hub_driver("search", term, timeout=300)
     return render_template("result.html", title=f"Driver search: {term}", ok=True, output=out)
 
