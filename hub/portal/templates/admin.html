@@ -66,7 +66,7 @@
   <h2>Scanners</h2>
   <p class="muted small">What the scan app (SANE) found. This search is separate from printers: an all-in-one appears
     here and under Printers. A scanner connected two ways (e.g. USB <em>and</em> Wi-Fi) shows twice; hide the one you
-    don't want on the Scan page.</p>
+    don't want on the Scan page. Rows that are the same device are flagged; USB is usually the steadier one to keep.</p>
   {% if scanners is none %}
     <p>The scan app hasn't reported any scanners yet. Open the <a href="{{ url_for('scan') }}">Scan</a> page once, or press <strong>Search again</strong>.</p>
   {% elif not scanners %}
@@ -76,7 +76,14 @@
     <tr><th>Scanner</th><th>Connection</th><th>Can scan from</th><th>Scan page</th><th></th></tr>
     {% for s in scanners %}
     <tr {% if s.hidden %}style="opacity:.55"{% endif %}>
-      <td><strong>{{ s.name }}</strong><br><code class="muted small">{{ s.id }}</code></td>
+      <td><strong>{{ s.name }}</strong>
+          {% if s.serial or s.mac_tag %}<br><span class="muted small">
+            {%- if s.serial %}Serial {{ s.serial }}{% endif %}
+            {%- if s.serial and s.mac_tag %} · {% endif %}
+            {%- if s.mac_tag %}<span title="The [{{ s.mac_tag }}] in the name is the end of the printer's network (MAC) address. HP adds it so identical models can be told apart.">[{{ s.mac_tag }}] = end of MAC address</span>{% endif %}</span>{% endif %}
+          {% if s.twin_by %}<br><span class="alert warn" title="{{ 'Both report the same device ID.' if s.twin_by in ('uuid','serial') else 'Same name apart from the connection, so very likely the same device.' }}">
+            Same {{ 'device' if s.twin_by in ('uuid','serial') else 'device (by name)' }} as: {{ s.twins|join(', ') }}. Hide one.</span>{% endif %}
+          <br><code class="muted small">{{ s.id }}</code></td>
       <td class="small">{{ s.connection }}{% if s.url %}<br><span class="muted">{{ s.url }}</span>{% endif %}</td>
       <td class="small">{{ s.sources|join(', ') or '—' }}{% if s.res_range %}<br><span class="muted">{{ s.res_range }}</span>{% endif %}
           {% if s.feeder %}<br><span class="alert {{ 'info' if s.feeder == 'empty' else 'warn' }}">feeder {{ s.feeder }}</span>{% endif %}</td>

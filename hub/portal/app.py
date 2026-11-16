@@ -376,6 +376,34 @@ def save_hidden_scanners(keys):
     tmp.replace(SHARED_DIR / "scanners-hidden.json")
 
 
+_ident_cache = {}
+
+
+def scanner_identity(url):
+    """Serial number and UUID from an eSCL scanner's capabilities (cached 10 min)."""
+    if not url:
+        return {}
+    hit = _ident_cache.get(url)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    ident = {}
+    try:
+        r = requests.get(url.rstrip("/") + "/ScannerCapabilities", timeout=3)
+        if r.ok:
+            for key, tag in (("serial", "SerialNumber"), ("uuid", "UUID")):
+                m = re.search(rf"<(?:\w+:)?{tag}>\s*([^<]+?)\s*</", r.text)
+                if m:
+                    ident[key] = m.group(1)
+    except requests.RequestException:
+        pass
+    _ident_cache[url] = (time.time(), ident)
+    return ident
+
+
+def _base_name(name):
+    return re.sub(r"\s*\((?:usb|network|wi-?fi)\)\s*$", "", name or "", flags=re.I).strip().lower()
+
+
 def detected_scanners():
     """What the scan app (SANE) found, as reported by the scanner container."""
     try:
@@ -399,8 +427,24 @@ def detected_scanners():
         else:
             conn_label = f"USB / local ({prefix} driver)"
         res = [r for r in d.get("resolutions", []) if isinstance(r, (int, float))]
+        ident = scanner_identity(url)
+        tag = re.search(r"\[([0-9A-Fa-f]{6})\]", d.get("name", ""))
         out.append({**d, "hidden": d.get("key") in hidden, "connection": conn_label,
-                    "res_range": f"{min(res)}–{max(res)} dpi" if res else ""})
+                    "res_range": f"{min(res)}–{max(res)} dpi" if res else "",
+                    "serial": ident.get("serial"), "uuid": ident.get("uuid"),
+                    "mac_tag": tag.group(1).upper() if tag else None})
+
+    # Same physical device reached two ways (USB + Wi-Fi): match on UUID or serial,
+    # else on the name without the "(USB)" suffix.
+    groups = {}
+    for s in out:
+        key = (("uuid", s["uuid"].lower()) if s["uuid"] else
+               ("serial", s["serial"]) if s["serial"] else ("name", _base_name(s.get("name"))))
+        groups.setdefault(key, []).append(s)
+    for (how, _), members in groups.items():
+        for s in members:
+            s["twins"] = [m["connection"] for m in members if m is not s]
+            s["twin_by"] = how if len(members) > 1 else None
     return out, data.get("updated", "")
 
 
