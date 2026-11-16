@@ -457,6 +457,53 @@ def detected_scanners():
     return out, data.get("updated", "")
 
 
+def serial_lookup(scanners):
+    """Map UUID / IP / network name -> serial, learned from the scanners' eSCL replies.
+
+    Printer discovery rarely includes a serial for network devices, but an
+    all-in-one's scanner reports it, along with the same UUID and name.
+    """
+    by = {"uuid": {}, "host": {}, "name": {}}
+    for s in scanners or []:
+        if not s.get("serial"):
+            continue
+        if s.get("uuid"):
+            by["uuid"][s["uuid"].lower().removeprefix("urn:uuid:")] = s["serial"]
+        host, _ = device_host_port(s["url"]) if s.get("url") else (None, None)
+        if host and host.strip("[]") not in ("localhost", "127.0.0.1", "::1"):
+            by["host"][host.strip("[]")] = s["serial"]
+        by["name"][(s.get("name") or "").lower()] = s["serial"]
+    return by
+
+
+def device_serial(uri, device_id, by):
+    """Best-effort serial number for a discovered printer (None if unknown)."""
+    m = re.search(r"(?:^|;)\s*(?:SN|SERN):\s*([^;]+)", device_id or "")
+    if m and m.group(1).strip():
+        return m.group(1).strip()
+    q = urllib.parse.parse_qs(urllib.parse.urlsplit(uri).query)
+    if q.get("serial"):
+        return q["serial"][0]
+    if q.get("uuid") and q["uuid"][0].lower() in by["uuid"]:
+        return by["uuid"][q["uuid"][0].lower()]
+    host = urllib.parse.unquote(urllib.parse.urlsplit(uri).hostname or "")
+    if host in by["host"]:
+        return by["host"][host]
+    # "dnssd://Name._ipp._tcp.local/" or "ipps://Name._ipps._tcp.local/": the
+    # service name usually matches the one the scanner announces.
+    svc = re.sub(r"\._ipps?\._tcp\.local\.?$", "", host, flags=re.I).lower()
+    if svc in by["name"]:
+        return by["name"][svc]
+    # Brother "BRW<MAC>"-style hostnames: resolve over mDNS and match the IP.
+    if host and "." not in host:
+        try:
+            ip = socket.getaddrinfo(host + ".local", None, socket.AF_INET)[0][4][0]
+            return by["host"].get(ip)
+        except (socket.gaierror, OSError, IndexError):
+            pass
+    return None
+
+
 def list_scanners():
     """Scanners configured in .env (AIRSCAN_DEVICES), with their device web pages."""
     raw = os.environ.get("AIRSCAN_DEVICES", "")
@@ -865,7 +912,7 @@ def admin():
             devices = sorted(
                 ({"uri": u, "info": a.get("device-info", ""),
                   "model": a.get("device-make-and-model", ""),
-                  "cls": a.get("device-class", "")}
+                  "cls": a.get("device-class", ""), "device_id": a.get("device-id", "")}
                  for u, a in raw.items() if ":" in u),
                 key=lambda d: (d["cls"] != "direct", d["info"]))
         except cups.IPPError as e:
@@ -887,9 +934,12 @@ def admin():
 
     # Mark devices that already have a queue; the scan list hides them unless ?all=1.
     hidden_added = 0
+    scanners, scanners_updated = detected_scanners()
     if devices:
+        serials = serial_lookup(scanners)
         for d in devices:
             d["added_as"] = queue_for_device(d, printers)
+            d["serial"] = device_serial(d["uri"], d.get("device_id"), serials)
         if request.args.get("discover") and not request.args.get("all"):
             hidden_added = sum(1 for d in devices if d["added_as"])
             # Serial ports and the braille driver aren't printers people want here.
@@ -913,7 +963,7 @@ def admin():
     return render_template(
         "admin.html", printers=printers, devices=devices, ppds=ppds, q=q, probe=probe,
         users=store.list_users(), allow_signup=ALLOW_SIGNUP, limits=scanproxy.LIMITS,
-        scanners=detected_scanners()[0], scanners_updated=detected_scanners()[1],
+        scanners=scanners, scanners_updated=scanners_updated,
         hidden_added=hidden_added, show_all=bool(request.args.get("all")),
         prefill_uri=request.args.get("uri", ""), prefill_model=request.args.get("model", ""),
         log_tail=log_tail, weak_password=ADMIN_PASSWORD in ("changeme", "admin", "password"),

@@ -131,7 +131,7 @@
       <tr><th>Device</th><th>URI</th><th></th></tr>
       {% for d in devices %}
       <tr {% if d.added_as %}style="opacity:.6"{% endif %}>
-          <td>{{ d.info }}<br><span class="muted small">{{ d.model }}</span></td>
+          <td>{{ d.info }}<br><span class="muted small">{{ d.model }}{% if d.serial %} · Serial {{ d.serial }}{% endif %}</span></td>
           <td class="small"><code>{{ d.uri }}</code></td>
           <td>{% if d.added_as %}<span class="pill" title="This device already has a print queue">added as {{ d.added_as }}</span>
               {% else %}<a class="btn secondary" style="padding:3px 10px;font-size:13px"
