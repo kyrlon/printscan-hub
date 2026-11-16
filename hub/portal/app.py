@@ -473,6 +473,10 @@ def serial_lookup(scanners):
         if host and host.strip("[]") not in ("localhost", "127.0.0.1", "::1"):
             by["host"][host.strip("[]")] = s["serial"]
         by["name"][(s.get("name") or "").lower()] = s["serial"]
+    by["model"] = {}
+    for name, serial in by["name"].items():
+        model = re.sub(r"\s*(\[[0-9a-f]{6}\]|\(usb\))", "", name).strip()
+        by["model"].setdefault(model, set()).add(serial)
     return by
 
 
@@ -501,6 +505,14 @@ def device_serial(uri, device_id, by):
             return by["host"].get(ip)
         except (socket.gaierror, OSError, IndexError):
             pass
+    # Last resort: the model, but only if exactly one device of that model is known.
+    mfg = re.search(r"(?:^|;)\s*(?:MFG|MANUFACTURER):\s*([^;]+)", device_id or "")
+    mdl = re.search(r"(?:^|;)\s*(?:MDL|MODEL):\s*([^;]+)", device_id or "")
+    if mfg and mdl:
+        model = f"{mfg.group(1).strip()} {mdl.group(1).strip()}".lower()
+        hits = by["model"].get(model) or by["model"].get(model.removeprefix("hp ").strip()) or set()
+        if len(hits) == 1:
+            return next(iter(hits))
     return None
 
 
