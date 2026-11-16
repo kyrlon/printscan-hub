@@ -30,7 +30,7 @@
 </nav>
 
 
-<section class="tab-panel" id="tab-printers" data-tab="printers" role="tabpanel">
+<section class="tab-panel" data-tab="printers" role="tabpanel">
 <div class="card" id="printers">
   <h1>Printers</h1>
   <p class="muted small">Enabled printers are shared on the network and offered on the Print page. <strong>Disable</strong>
@@ -214,7 +214,7 @@
 </div>
 </section>
 
-<section class="tab-panel" id="tab-scanners" data-tab="scanners" role="tabpanel">
+<section class="tab-panel" data-tab="scanners" role="tabpanel">
 <div class="card" id="scanners">
   <h2>Scanners</h2>
   <p class="muted small">What the scan app (SANE) found. This search is separate from printers: an all-in-one appears
@@ -306,7 +306,7 @@
 </div>
 </section>
 
-<section class="tab-panel" id="tab-accounts" data-tab="accounts" role="tabpanel">
+<section class="tab-panel" data-tab="accounts" role="tabpanel">
 <div class="card" id="accounts">
   <h2>Accounts <span class="muted small" style="font-weight:400">(optional)</span></h2>
   <p class="muted small">Scans are <strong>shared</strong> by default. Anyone can switch their browser to
@@ -370,9 +370,12 @@
     });
     try { sessionStorage.setItem('psh_admin_tab', name); } catch (e) {}
   }
+  // "#tab-<name>" has no matching element id on purpose, so the browser doesn't
+  // scroll past the tab bar; other hashes (#scanners) scroll to that section.
   function fromHash() {
-    var id = location.hash.slice(1), el = id && document.getElementById(id);
-    var panel = el && (el.classList.contains('tab-panel') ? el : el.closest('.tab-panel'));
+    var id = location.hash.slice(1);
+    if (id.indexOf('tab-') === 0 && document.querySelector('.tab-panel[data-tab="' + id.slice(4) + '"]')) return id.slice(4);
+    var el = id && document.getElementById(id), panel = el && el.closest('.tab-panel');
     if (panel) return panel.dataset.tab;
     try { return sessionStorage.getItem('psh_admin_tab') || 'printers'; } catch (e) { return 'printers'; }
   }
