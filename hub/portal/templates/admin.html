@@ -170,7 +170,7 @@
 
     <div id="driver-search" class="driver-search" {% if not start_search %}hidden{% endif %}>
       <input id="driver-q" type="search" autocomplete="off" value="{{ prefill_info|replace('(driverless)', '')|replace('(USB)', '')|trim if start_search else '' }}"
-             placeholder="Model, e.g. brother hl-l2350 (or paste an exact driver name)">
+             placeholder="Make and model, e.g. hp laserjet 1020 (or paste an exact driver name)">
       <div id="driver-results" class="driver-results" role="listbox" aria-label="Matching drivers"></div>
       <p id="driver-status" class="small muted" style="margin:6px 0 0" aria-live="polite"></p>
     </div>
