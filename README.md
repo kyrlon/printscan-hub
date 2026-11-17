@@ -295,6 +295,11 @@ The **Files:** switch at the top of the Scan page controls who sees scans under 
 | **Only me** (signed in) | The account holder, on any device they sign in on. Accounts start in this mode | `ACCOUNT_MAX_FILES=200`, `ACCOUNT_KEEP_DAYS=0` (keep) |
 
 Past the file limit, the oldest private scans are removed; `0` means unlimited.
+
+The **preview image** always belongs to the device that made it, whatever the mode. Someone else
+pressing Preview or Scan doesn't change what you see, and your phone and computer each keep their
+own preview even when signed in to the same account. Scan settings are also remembered per browser.
+
 Accounts are optional: the admin creates them under **Admin → Accounts**, or set `ALLOW_SIGNUP=true`
 so people can create their own. The **Sign in** link appears on the Scan page once accounts are on.
 Deleting an account either keeps its scans (they become shared) or deletes them.

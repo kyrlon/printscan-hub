@@ -5,7 +5,14 @@ Modes (per browser, cookie `psh_files`):
   private  Files list shows only this browser's (or signed-in user's) scans;
            new scans belong to them. Browser-private scans are limited in
            number and age; account scans have their own limits.
+
+Preview: scanservjs keeps a single preview image for everyone, and every
+preview or scan replaces it. The proxy gives each browser its own: the browser
+that made the current image ("holder") is served it live; every other browser
+gets its own last image from a snapshot (or a blank page).
 """
+import hashlib
+import json
 import os
 import re
 import secrets
@@ -37,6 +44,12 @@ HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authoriz
                "transfer-encoding", "upgrade", "content-length", "content-encoding", "host",
                "cookie", "authorization", "accept-encoding"}
 FILE_PATH = re.compile(r"^api/v1/files/([^/]+)(/.*)?$")
+PREVIEW_DIR = os.path.join(os.path.dirname(store.DB_PATH), "previews")
+PREVIEW_KEEP_DAYS = 14
+# Plain white page, used if scanservjs' own placeholder hasn't been seen yet.
+BLANK_JPEG = ("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1R"
+              "V19iZ2hnPk1xeXBkeFxlZ2P/wAALCABuAFUBAREA/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA"
+              "/9oACAEBAAA/AKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//2Q==")
 
 bp = Blueprint("scanproxy", __name__)
 _last_cleanup = {"at": 0.0}
@@ -137,6 +150,120 @@ def _cleanup(existing_names=None):
         gone = [n for n in store.owners() if n not in existing_names]
         if gone:
             store.forget(gone)
+    _prune_previews()
+
+
+# --------------------------------------------------------------- preview ---
+# State lives in files because gunicorn runs several worker processes:
+#   previews/_holder.json   {"key": <browser key that made scanservjs' image, or null>}
+#   previews/_default.json  scanservjs' "no preview yet" image
+#   previews/<key>.json     {<filter query>: <base64 jpeg>} for one browser
+def _pv_key():
+    return hashlib.sha256(("b:" + browser_id()).encode()).hexdigest()[:32]
+
+
+def _pv_read(name, default=None):
+    try:
+        with open(os.path.join(PREVIEW_DIR, name + ".json")) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def _pv_write(name, data):
+    os.makedirs(PREVIEW_DIR, exist_ok=True)
+    path = os.path.join(PREVIEW_DIR, name + ".json")
+    tmp = f"{path}.{os.getpid()}.{secrets.token_hex(4)}"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.replace(tmp, path)
+
+
+def _holder():
+    state = _pv_read("_holder")
+    if state is None:
+        # First run: an image left over from before belongs to nobody.
+        try:
+            requests.delete(SCANNER_URL + "/api/v1/preview", timeout=10)
+        except requests.RequestException:
+            pass
+        state = {"key": None}
+        _pv_write("_holder", state)
+    return state.get("key")
+
+
+def _set_holder(key):
+    _pv_write("_holder", {"key": key})
+
+
+def _filter_key():
+    return "&".join(sorted(f"{k}={v}" for k, v in request.args.items(multi=True) if "filter" in k))
+
+
+def _begin_capture():
+    """Before a preview/scan: this browser's image is about to replace scanservjs' one."""
+    me = _pv_key()
+    if _holder() != me:
+        # Clear the previous browser's image (it has its own snapshot) so a
+        # failed scan doesn't show it here.
+        try:
+            requests.delete(SCANNER_URL + "/api/v1/preview", timeout=10)
+        except requests.RequestException:
+            pass
+        _set_holder(me)
+
+
+def _end_capture():
+    """After a successful preview/scan: snapshot the new image for this browser."""
+    me = _pv_key()
+    if _holder() != me:
+        return
+    try:
+        r = requests.get(SCANNER_URL + "/api/v1/preview", timeout=60)
+        if r.status_code == 200 and _holder() == me:
+            _pv_write(me, {"": r.json()["content"]})
+    except (requests.RequestException, ValueError, KeyError):
+        pass
+
+
+def _preview_get():
+    me, fkey, holder = _pv_key(), _filter_key(), _holder()
+    if holder in (me, None):
+        r = _forward("api/v1/preview")
+        if r.status_code != 200:
+            return _relay(r)
+        body = r.json()
+        if _holder() == holder:                  # nobody replaced it meanwhile
+            if holder == me:
+                cache = _pv_read(me, {})
+                cache[fkey] = body.get("content")
+                _pv_write(me, cache)
+            else:
+                _pv_write("_default", body)
+            return jsonify(body)
+    cache = _pv_read(me, {})
+    content = cache.get(fkey) or cache.get("") or _pv_read("_default", {}).get("content") or BLANK_JPEG
+    return jsonify({"content": content})
+
+
+def _preview_delete():
+    me = _pv_key()
+    _pv_write(me, {})
+    if _holder() == me:
+        r = _forward("api/v1/preview")
+        _set_holder(None)
+        return _relay(r)
+    return jsonify({})
+
+
+def _prune_previews():
+    cutoff = time.time() - PREVIEW_KEEP_DAYS * 86400
+    try:
+        for entry in os.scandir(PREVIEW_DIR):
+            if not entry.name.startswith("_") and entry.stat().st_mtime < cutoff:
+                os.remove(entry.path)
+    except OSError:
+        pass
 
 
 def visible(name, owners, me, m):
@@ -187,10 +314,31 @@ def scan_app(path):
             return _relay(r)
 
         # Scans: in private mode the finished file belongs to this browser/user.
+        # Preview image: one per browser (see the module docstring).
+        if path == "api/v1/preview":
+            if request.method == "GET":
+                return _preview_get()
+            if request.method == "DELETE":
+                return _preview_delete()
+            if request.method == "POST":
+                _begin_capture()
+                r = _forward(path)
+                if r.status_code < 300:
+                    _end_capture()
+                return _relay(r)
+        if path == "api/v1/context" and request.method == "DELETE":
+            r = _forward(path)                   # scanservjs' Reset also deletes its preview
+            if r.status_code < 300:
+                _set_holder(None)
+                _pv_write(_pv_key(), {})
+            return _relay(r)
+
         if path == "api/v1/scan" and request.method == "POST":
+            _begin_capture()
             r = _forward(path)
             if r.status_code != 200:
                 return _relay(r)
+            _end_capture()
             body = r.json()
             name = (body.get("file") or {}).get("name") if isinstance(body, dict) else None
             if name and mode() == "private":
