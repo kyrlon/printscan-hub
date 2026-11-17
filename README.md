@@ -299,6 +299,11 @@ Past the file limit, the oldest private scans are removed; `0` means unlimited.
 The **preview image** always belongs to the device that made it, whatever the mode. Someone else
 pressing Preview or Scan doesn't change what you see, and your phone and computer each keep their
 own preview even when signed in to the same account. Scan settings are also remembered per browser.
+The admin can see every device's latest preview under **Admin → Scanners → Scan page sessions**.
+
+While someone is previewing or scanning, everyone else's Scan page shows a **scanner in use** bar
+(who started it and how long ago). Starting a scan on that same scanner is refused until it finishes;
+other scanners stay free.
 
 Accounts are optional: the admin creates them under **Admin → Accounts**, or set `ALLOW_SIGNUP=true`
 so people can create their own. The **Sign in** link appears on the Scan page once accounts are on.

@@ -811,7 +811,31 @@ def print_page():
 
 @app.get("/scan")
 def scan():
+    scanproxy.touch()
     return render_template("scan.html", files=scanproxy.status())
+
+
+def scanner_names():
+    """scanservjs device id -> name as shown on the Scan page."""
+    try:
+        data = json.loads((SHARED_DIR / "scanners-detected.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return {d.get("id"): re.sub(r"^airscan:e\d+:|\s*\[[0-9A-Fa-f]{6}\]", "", d.get("name") or d.get("id", "")).strip()
+            for d in data.get("devices", [])}
+
+
+def busy_info():
+    names, me, now = scanner_names(), scanproxy.my_key(), time.time()
+    return [{"scanner": names.get(b.get("device_id")) or "The scanner", "who": b.get("who", "Someone"),
+             "kind": b.get("kind", "Scan"), "seconds": int(now - b.get("started", now)),
+             "mine": b.get("key") == me} for b in scanproxy.busy_list()]
+
+
+@app.get("/scan/status")
+def scan_status():
+    """Polled by the Scan page to show "scanner in use"."""
+    return {"busy": busy_info()}
 
 
 @app.post("/scan/mode")
@@ -1050,6 +1074,7 @@ def admin():
     return render_template(
         "admin.html", printers=printers, devices=devices, probe=probe,
         users=store.list_users(), allow_signup=ALLOW_SIGNUP, limits=scanproxy.LIMITS,
+        scan_sessions=scanproxy.sessions(), my_scan_key=scanproxy.my_key(), now=time.time(),
         scanners=scanners, scanners_updated=scanners_updated,
         devices_added=devices_added,
         prefill_uri=request.args.get("uri", ""), prefill_model=request.args.get("model", ""),
@@ -1209,6 +1234,16 @@ def admin_driver_search():
         return redirect(url_for("admin") + "#drivers")
     rc, out = run_hub_driver("search", term, timeout=300)
     return render_template("result.html", title=f"Driver search: {term}", ok=True, output=out)
+
+
+@app.get("/admin/scan-sessions/<key>/preview.jpg")
+@require_admin
+def admin_session_preview(key):
+    """One device's last Scan-page preview (Admin → Scanners → Scan page sessions)."""
+    data = scanproxy.preview_jpeg(key)
+    if not data:
+        abort(404)
+    return Response(data, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/admin/scanners/refresh")

@@ -330,6 +330,39 @@
   </form>
 </div>
 
+{% macro ago(t) -%}
+  {%- set s = (now - (t or now))|int -%}
+  {%- if s < 60 %}just now{% elif s < 3600 %}{{ s // 60 }} min ago{% elif s < 86400 %}{{ s // 3600 }} h ago{% else %}{{ s // 86400 }} d ago{% endif -%}
+{%- endmacro %}
+<div class="card" id="scan-sessions">
+  <h2>Scan page sessions</h2>
+  <p class="muted small">Each phone or browser that opened the Scan page in the last 14 days. Every device has its own
+    preview, so people don't see each other's pages; here you can see them all.</p>
+  {% if not scan_sessions %}
+    <p>Nobody has used the Scan page yet.</p>
+  {% else %}
+  <div class="table-scroll"><table>
+    <tr><th>Device</th><th>Signed in as</th><th>Last seen</th><th>Last action</th><th>Preview</th></tr>
+    {% for s in scan_sessions %}
+    <tr>
+      <td><strong>{{ s.device or 'Unknown browser' }}</strong>{% if s.key == my_scan_key %} <span class="pill idle">this browser</span>{% endif %}
+          <br><span class="muted small">{{ s.ip or '' }}</span></td>
+      <td>{{ s.user or '—' }}</td>
+      <td class="small">{{ ago(s.last) }}</td>
+      <td class="small">
+        {% if s.busy %}<span class="pill busy">{{ s.busy.kind }} running</span>
+        {% elif s.action %}{{ s.action }} · {{ ago(s.action_at) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{% if s.has_preview %}
+          <a href="{{ url_for('admin_session_preview', key=s.key) }}" target="_blank" rel="noopener" title="Open full size">
+            <img src="{{ url_for('admin_session_preview', key=s.key) }}" alt="Preview from {{ s.device }}" loading="lazy"
+                 style="height:64px;max-width:90px;object-fit:contain;border:1px solid var(--line);border-radius:4px;background:#fff;vertical-align:middle"></a>
+          {% else %}<span class="muted small">none</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+</div>
+
 <div class="card" id="inbox">
   <h2>Scan to hub folder</h2>
   {% if not inbox.enabled %}

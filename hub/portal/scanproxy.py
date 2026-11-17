@@ -256,6 +256,134 @@ def _preview_delete():
     return jsonify({})
 
 
+# --------------------------------------------- sessions and "scanner in use" ---
+#   previews/<key>.meta.json   who/what device, last seen, last action (Admin view)
+#   previews/_busy-<id>.json   a preview/scan running on one scanner right now
+BUSY_STALE = 15 * 60          # a busy marker older than this is from a crashed request
+_UA_OS = [("Android", "Android"), ("iPhone", "iPhone"), ("iPad", "iPad"), ("Windows", "Windows"),
+          ("Mac OS", "Mac"), ("CrOS", "ChromeOS"), ("Linux", "Linux")]
+_UA_BROWSER = [("SamsungBrowser", "Samsung Internet"), ("Edg", "Edge"), ("Firefox/", "Firefox"),
+               ("FxiOS", "Firefox"), ("CriOS", "Chrome"), ("OPR/", "Opera"), ("Chrome/", "Chrome"),
+               ("Safari/", "Safari")]
+
+
+def device_label(ua):
+    ua = ua or ""
+    os_name = next((n for p, n in _UA_OS if p in ua), "")
+    browser = next((n for p, n in _UA_BROWSER if p in ua), "Browser")
+    return f"{browser} on {os_name}" if os_name else browser
+
+
+def my_key():
+    return _pv_key()
+
+
+def touch(action=None):
+    """Record this device for the Admin session list (at most once a minute unless acting)."""
+    key, now, user = _pv_key(), time.time(), current_user()
+    meta = _pv_read(key + ".meta", {})
+    if not action and now - meta.get("last", 0) < 60 and meta.get("user") == user:
+        return
+    meta.update(user=user, device=device_label(request.headers.get("User-Agent")),
+                ip=request.remote_addr, last=now)
+    meta.setdefault("first", now)
+    if action:
+        meta.update(action=action, action_at=now)
+    try:
+        _pv_write(key + ".meta", meta)
+    except OSError:
+        pass
+
+
+def _who(meta):
+    return meta.get("user") or meta.get("device") or "Someone"
+
+
+def _busy_name(device_id):
+    return "_busy-" + hashlib.sha256((device_id or "").encode()).hexdigest()[:16]
+
+
+def busy_list():
+    """Previews/scans running now: [{key, who, device_id, kind, started}]."""
+    out, now = [], time.time()
+    try:
+        entries = [e.name[:-5] for e in os.scandir(PREVIEW_DIR) if e.name.startswith("_busy-") and e.name.endswith(".json")]
+    except OSError:
+        return out
+    for name in entries:
+        b = _pv_read(name)
+        if b and now - b.get("started", 0) < BUSY_STALE:
+            out.append(b)
+    return out
+
+
+def _start_busy(kind, device_id):
+    me = _pv_key()
+    meta = _pv_read(me + ".meta", {})
+    _pv_write(_busy_name(device_id), {"key": me, "who": _who(meta), "device": meta.get("device", ""),
+                                      "device_id": device_id, "kind": kind, "started": time.time()})
+
+
+def _end_busy(device_id):
+    name = _busy_name(device_id)
+    b = _pv_read(name)
+    if b and b.get("key") == _pv_key():
+        try:
+            os.remove(os.path.join(PREVIEW_DIR, name + ".json"))
+        except OSError:
+            pass
+
+
+def _busy_by_other(device_id):
+    me = _pv_key()
+    return next((b for b in busy_list() if b.get("device_id") == device_id and b.get("key") != me), None)
+
+
+def _claim_scanner(kind):
+    """Mark the requested scanner busy, or return a 409 if someone else is using it."""
+    params = (request.get_json(silent=True) or {}).get("params") or {}
+    device_id = str(params.get("deviceId") or "")
+    other = _busy_by_other(device_id)
+    if other:
+        mins = int((time.time() - other.get("started", 0)) // 60)
+        since = f"{mins} min" if mins else "less than a minute"
+        return device_id, Response(
+            f"The scanner is in use: {other.get('who', 'someone')} started a {other.get('kind', 'scan').lower()} "
+            f"{since} ago. Try again when it's finished.", 409, mimetype="text/plain")
+    touch(kind)
+    _start_busy(kind, device_id)
+    return device_id, None
+
+
+def sessions():
+    """Devices that used the Scan page recently, newest first (Admin → Scanners)."""
+    busy = {b["key"]: b for b in busy_list()}
+    holder, out = _pv_read("_holder", {}).get("key"), []
+    try:
+        names = [e.name[:-10] for e in os.scandir(PREVIEW_DIR) if e.name.endswith(".meta.json")]
+    except OSError:
+        return out
+    for key in names:
+        meta = _pv_read(key + ".meta")
+        if not meta:
+            continue
+        out.append({**meta, "key": key, "busy": busy.get(key), "holder": key == holder,
+                    "has_preview": bool(_pv_read(key, {}).get(""))})
+    return sorted(out, key=lambda s: -s.get("last", 0))
+
+
+def preview_jpeg(key):
+    """This device's last preview image as JPEG bytes, or None."""
+    import base64
+    if not re.fullmatch(r"[0-9a-f]{32}", key or ""):
+        return None
+    content = _pv_read(key, {}).get("")
+    try:
+        return base64.b64decode(content) if content else None
+    except ValueError:
+        return None
+
+
 def _prune_previews():
     cutoff = time.time() - PREVIEW_KEEP_DAYS * 86400
     try:
@@ -285,6 +413,7 @@ def scan_app(path):
         abort(403)
     if path.startswith("api-docs"):
         abort(404)
+    touch()
 
     try:
         # File list: filter to what this browser/user may see in the current mode.
@@ -321,10 +450,16 @@ def scan_app(path):
             if request.method == "DELETE":
                 return _preview_delete()
             if request.method == "POST":
-                _begin_capture()
-                r = _forward(path)
-                if r.status_code < 300:
-                    _end_capture()
+                device_id, refusal = _claim_scanner("Preview")
+                if refusal:
+                    return refusal
+                try:
+                    _begin_capture()
+                    r = _forward(path)
+                    if r.status_code < 300:
+                        _end_capture()
+                finally:
+                    _end_busy(device_id)
                 return _relay(r)
         if path == "api/v1/context" and request.method == "DELETE":
             r = _forward(path)                   # scanservjs' Reset also deletes its preview
@@ -334,12 +469,18 @@ def scan_app(path):
             return _relay(r)
 
         if path == "api/v1/scan" and request.method == "POST":
-            _begin_capture()
-            r = _forward(path)
-            if r.status_code != 200:
-                return _relay(r)
-            _end_capture()
-            body = r.json()
+            device_id, refusal = _claim_scanner("Scan")
+            if refusal:
+                return refusal
+            try:
+                _begin_capture()
+                r = _forward(path)
+                if r.status_code != 200:
+                    return _relay(r)
+                _end_capture()
+                body = r.json()
+            finally:
+                _end_busy(device_id)
             name = (body.get("file") or {}).get("name") if isinstance(body, dict) else None
             if name and mode() == "private":
                 owner = owner_key()

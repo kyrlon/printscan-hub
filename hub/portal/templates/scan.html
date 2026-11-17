@@ -40,5 +40,34 @@
 {% if inbox.enabled and files.mode == 'private' %}
 <div class="scan-note small muted">Scans sent from the printer's own Scan button are under <strong>Shared</strong>.</div>
 {% endif %}
+<div id="scan-busy" class="scan-busy" role="status" aria-live="polite" hidden></div>
 <iframe class="scan-frame" src="{{ scan_url }}" title="Scanner"></iframe>
+<script>
+(function () {
+  // Show when someone (or this browser) is using a scanner. Polls a tiny JSON endpoint.
+  var box = document.getElementById('scan-busy');
+  function secs(s) { return s < 60 ? s + ' s' : Math.floor(s / 60) + ' min'; }
+  function render(list) {
+    var others = list.filter(function (b) { return !b.mine; }), mine = list.filter(function (b) { return b.mine; });
+    var parts = others.map(function (b) {
+      return '⚠ ' + b.scanner + ' is in use: ' + b.who + ' started a ' + b.kind.toLowerCase() + ' ' + secs(b.seconds) +
+             ' ago. Wait for it to finish before you scan on it.';
+    });
+    if (!parts.length && mine.length) parts = mine.map(function (b) { return b.kind + ' running on ' + b.scanner + ' (' + secs(b.seconds) + ')…'; });
+    box.textContent = parts.join(' ');
+    box.classList.toggle('mine', !others.length);
+    box.hidden = !parts.length;
+  }
+  function poll() {
+    if (document.hidden) return;
+    fetch('{{ url_for("scan_status") }}', {credentials: 'same-origin'})
+      .then(function (r) { return r.ok ? r.json() : {busy: []}; })
+      .then(function (d) { render(d.busy || []); })
+      .catch(function () {});
+  }
+  poll();
+  setInterval(poll, 3000);
+  document.addEventListener('visibilitychange', poll);
+})();
+</script>
 {% endblock %}
