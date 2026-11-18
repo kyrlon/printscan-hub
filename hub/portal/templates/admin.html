@@ -122,7 +122,7 @@
   {% set needs_driver = prefill_uri and not prefill_driverless and (not prefill_model or prefill_model == 'everywhere') %}
   <label id="add-form">2. Name it and press <em>Add printer</em></label>
   {% if prefill_uri %}
-  <div class="flash {{ 'warn' if needs_driver else 'ok' }}" style="margin:6px 0 10px">
+  <div class="flash {{ 'warn' if needs_driver else 'ok' }} add-notice" style="margin:6px 0 10px">
     Picked {% if prefill_info %}<strong>{{ prefill_info }}</strong>{% else %}<code>{{ prefill_uri }}</code>{% endif %}.
     {% if needs_driver %}
       This connection needs a driver for your model: pick one in the <strong>Driver</strong> list below{% if not driver_choices %}
@@ -133,7 +133,7 @@
     {% endif %}
   </div>
   {% if prefill_same %}
-  <div class="flash warn" style="margin:0 0 10px">
+  <div class="flash warn add-notice" style="margin:0 0 10px">
     ⚠ <strong>This is the same printer as {{ prefill_same }}</strong>, which is already set up (same serial number),
     reached another way, e.g. Wi-Fi instead of USB. Adding it makes a <em>second</em> queue, and people will see the
     printer twice when printing. Usually you don't need this; it can be useful as a backup when the first connection is down.
@@ -169,7 +169,7 @@
         {% if picked and picked not in choice_names %}<option value="{{ picked }}" selected>{{ picked }}</option>{% endif %}
       </optgroup>
       {% if driver_choices %}
-      <optgroup label="Installed drivers for {{ prefill_info or 'this printer' }}">
+      <optgroup label="Installed drivers for {{ prefill_info or 'this printer' }}" class="for-picked">
         {% for d in driver_choices %}<option value="{{ d.name }}" {% if d.name == picked %}selected{% endif %}>{{ d.model }}</option>{% endfor %}
       </optgroup>
       {% endif %}
@@ -244,13 +244,45 @@
     </script>
 
     <div class="checks"><label><input type="checkbox" name="default" value="1"> Make this the default printer</label></div>
-    <button type="submit" style="margin-top:14px">{{ 'Add a second queue anyway' if prefill_same else 'Add printer' }}</button>
+    <div class="actions" style="margin-top:14px">
+      <button type="submit" id="add-submit">{{ 'Add a second queue anyway' if prefill_same else 'Add printer' }}</button>
+      <button type="button" class="secondary" id="add-clear" title="Empty all fields and start again. The printer list in step 1 stays.">Clear</button>
+    </div>
   </form>
   <script>
   (function () {
     var f = document.getElementById('add-printer-form');
-    if (f && f.dataset.confirm) f.addEventListener('submit', function (e) {
-      if (!confirm(f.dataset.confirm)) e.preventDefault();
+    if (!f) return;
+    f.addEventListener('submit', function (e) {
+      if (f.dataset.confirm && !confirm(f.dataset.confirm)) e.preventDefault();
+    });
+
+    // Clear: empty the form in place (no reload, so step 1's search results stay).
+    document.getElementById('add-clear').addEventListener('click', function () {
+      ['name', 'desc', 'location', 'uri', 'driver-q'].forEach(function (id) { document.getElementById(id).value = ''; });
+      f.querySelector('input[name=default]').checked = false;
+      var sel = document.getElementById('model');
+      Array.prototype.slice.call(sel.querySelectorAll('optgroup.for-picked, option[value=""]')).forEach(function (el) { el.remove(); });
+      var chosen = document.getElementById('model-chosen');
+      chosen.innerHTML = ''; chosen.hidden = true;
+      var ev = sel.querySelector('option[value=everywhere]');
+      ev.disabled = false;
+      ev.textContent = 'Driverless (everywhere): recommended, nothing to install';
+      ev.selected = true;
+      document.getElementById('driver-results').innerHTML = '';
+      document.getElementById('driver-status').textContent = '';
+      sel.dispatchEvent(new Event('change'));
+      Array.prototype.slice.call(document.querySelectorAll('.add-notice')).forEach(function (el) { el.remove(); });
+      delete f.dataset.confirm;
+      document.getElementById('add-submit').textContent = 'Add printer';
+      // Drop the picked printer from the address so a refresh doesn't bring it back.
+      try {
+        var u = new URL(location.href);
+        ['uri', 'model', 'info', 'same'].forEach(function (k) { u.searchParams.delete(k); });
+        u.hash = 'add-form';
+        history.replaceState(null, '', u);
+      } catch (e) {}
+      document.getElementById('uri').focus();
     });
   })();
   </script></div>
