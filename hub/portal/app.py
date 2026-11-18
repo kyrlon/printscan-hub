@@ -1079,6 +1079,8 @@ def admin():
         devices_added=devices_added,
         prefill_uri=request.args.get("uri", ""), prefill_model=request.args.get("model", ""),
         prefill_info=request.args.get("info", ""),
+        prefill_same=next((p["name"] for p in printers if p["name"] == request.args.get("same")), "")
+        if request.args.get("uri") else "",
         prefill_name=queue_name_from(request.args.get("info", "")),
         prefill_driverless=driverless_uri(request.args.get("uri", "")),
         driver_choices=suggest_drivers(request.args.get("info", "")) if request.args.get("uri") else [],

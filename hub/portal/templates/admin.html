@@ -100,7 +100,7 @@
             {% else %}
               {% if d.same_as %}<span class="pill same" title="Same serial number as the printer behind this queue, reached another way (e.g. Wi-Fi instead of USB). Adding it gives a second queue for the same printer.">⚠ same printer as <strong>{{ d.same_as }}</strong></span><br>{% endif %}
               <a class="btn secondary" style="padding:3px 10px;font-size:13px;{% if d.same_as %}margin-top:4px{% endif %}"
-                 href="{{ url_for('admin', uri=d.uri, model=d.suggest or prefill_model, info=d.info) }}#add-form"
+                 href="{{ url_for('admin', uri=d.uri, model=d.suggest or prefill_model, info=d.info, same=d.same_as or None) }}#add-form"
                  title="Fill in step 2 below with this printer; then press Add printer there">Add</a>
             {% endif %}</td></tr>
       {% endfor %}
@@ -132,8 +132,16 @@
       Check the names below, then press <strong>Add printer</strong>. Nothing is set up until you do.
     {% endif %}
   </div>
+  {% if prefill_same %}
+  <div class="flash warn" style="margin:0 0 10px">
+    ⚠ <strong>This is the same printer as {{ prefill_same }}</strong>, which is already set up (same serial number),
+    reached another way, e.g. Wi-Fi instead of USB. Adding it makes a <em>second</em> queue, and people will see the
+    printer twice when printing. Usually you don't need this; it can be useful as a backup when the first connection is down.
+  </div>
   {% endif %}
-  <form method="post" action="{{ url_for('admin_add_printer') }}">
+  {% endif %}
+  <form method="post" action="{{ url_for('admin_add_printer') }}" id="add-printer-form"
+        {% if prefill_same %}data-confirm="This printer is already set up as {{ prefill_same }}. Add a second queue for it anyway?"{% endif %}>
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
     <div class="row">
       <div><label for="name">Queue name <span class="muted" style="font-weight:400">(letters, numbers, _ or -)</span></label>
@@ -236,8 +244,16 @@
     </script>
 
     <div class="checks"><label><input type="checkbox" name="default" value="1"> Make this the default printer</label></div>
-    <button type="submit" style="margin-top:14px">Add printer</button>
-  </form></div>
+    <button type="submit" style="margin-top:14px">{{ 'Add a second queue anyway' if prefill_same else 'Add printer' }}</button>
+  </form>
+  <script>
+  (function () {
+    var f = document.getElementById('add-printer-form');
+    if (f && f.dataset.confirm) f.addEventListener('submit', function (e) {
+      if (!confirm(f.dataset.confirm)) e.preventDefault();
+    });
+  })();
+  </script></div>
 
 <div class="card" id="drivers">
   <h2>Drivers</h2>
