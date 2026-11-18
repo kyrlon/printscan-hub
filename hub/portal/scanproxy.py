@@ -111,6 +111,20 @@ def _forward(path, data=None):
                             stream=True, timeout=(5, 900), allow_redirects=False)
 
 
+OPEN_FAILED = re.compile(rb"open of device .{0,200} failed", re.S)
+
+
+def _forward_scan(path):
+    """Forward a preview/scan, retrying once if the scanner refused to open.
+    Network scanners sometimes reject the connection for a moment (busy, just
+    woken up); nothing has been scanned at that point, so a retry is safe."""
+    r = _forward(path)
+    if r.status_code >= 400 and OPEN_FAILED.search(r.content or b""):
+        time.sleep(2)
+        r = _forward(path)
+    return r
+
+
 def _relay(r):
     headers = [(k, v) for k, v in r.raw.headers.items() if k.lower() not in HOP_HEADERS]
     return Response(stream_with_context(r.iter_content(65536)), status=r.status_code, headers=headers)
@@ -455,7 +469,7 @@ def scan_app(path):
                     return refusal
                 try:
                     _begin_capture()
-                    r = _forward(path)
+                    r = _forward_scan(path)
                     if r.status_code < 300:
                         _end_capture()
                 finally:
@@ -474,7 +488,7 @@ def scan_app(path):
                 return refusal
             try:
                 _begin_capture()
-                r = _forward(path)
+                r = _forward_scan(path)
                 if r.status_code != 200:
                     return _relay(r)
                 _end_capture()

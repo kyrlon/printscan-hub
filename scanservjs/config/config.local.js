@@ -85,7 +85,34 @@ setInterval(discover, 10 * 60 * 1000).unref();
 
 // Ask the scanner whether paper is in the feeder. Synchronous (afterDevices is),
 // with a short timeout so an offline scanner can't stall the page.
+// The Scan page refreshes this every few seconds, so answers are cached briefly,
+// and the scanner is left alone while a scan is running: some scanners (e.g.
+// Brother over Wi-Fi) refuse the scan ("Invalid argument") if a status request
+// arrives while it is starting.
+const ADF_CACHE_MS = 15 * 1000;
+const adfCache = {};
+function scanRunning() {
+  try {
+    return fs.readdirSync('/proc').some(pid => {
+      if (!/^\d+$/.test(pid)) return false;
+      try { return fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0')[0].endsWith('scanimage'); }
+      catch (e) { return false; }
+    });
+  } catch (e) {
+    return false;
+  }
+}
+
 function adfLoaded(baseUrl) {
+  const hit = adfCache[baseUrl];
+  if (hit && (Date.now() - hit.at < ADF_CACHE_MS || scanRunning())) return hit.loaded;
+  if (!hit && scanRunning()) return null;
+  const loaded = fetchAdfLoaded(baseUrl);
+  adfCache[baseUrl] = { loaded, at: Date.now() };
+  return loaded;
+}
+
+function fetchAdfLoaded(baseUrl) {
   const url = baseUrl.replace(/\/?$/, '/') + 'ScannerStatus';
   const script = `fetch(${JSON.stringify(url)},{signal:AbortSignal.timeout(2000)})` +
                  `.then(r=>r.text()).then(t=>process.stdout.write(t)).catch(()=>{})`;
