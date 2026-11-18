@@ -380,13 +380,14 @@
 </div>
 
 <div class="card" id="inbox">
-  <h2>Scan to hub folder</h2>
+  <h2>Scan to hub via FTP{% if inbox.enabled and inbox.smb %} / SMB{% endif %}</h2>
   {% if not inbox.enabled %}
     <p>Off. To let people press <em>Scan</em> on the printer and have the file appear on the Scan page,
       set <code>SCAN_INBOX_PASSWORD</code> (and <code>HUB_ADDRESS</code>) in <code>.env</code> and run <code>docker compose up -d</code>.</p>
   {% else %}
-    <p class="muted small">Set this up once in the printer's own settings. Afterwards, pressing <strong>Scan → FTP</strong> on the printer
-      saves the scan here, and it appears under <em>Files</em> on the <a href="{{ url_for('scan') }}">Scan</a> page.</p>
+    <p class="muted small">For printers with a <em>Scan to FTP</em> or <em>Scan to network folder</em> option: enter these values
+      in the printer's own settings once. Scans sent from the printer's panel then appear under <em>Files</em> on the
+      <a href="{{ url_for('scan') }}">Scan</a> page. Printers without that option can use the Scan page directly.</p>
     {% if not hub_address %}
       <div class="flash error">Set <code>HUB_ADDRESS</code> in <code>.env</code> to this computer's LAN IP address (the printer can't use “localhost”).</div>
     {% endif %}
@@ -407,39 +408,6 @@
       {% endif %}
     </table></div>
 
-    {% set web_scanners = (scanners or [])|selectattr('web')|rejectattr('no_folder')|list %}
-    {% set no_folder = (scanners or [])|selectattr('no_folder')|map(attribute='short_name')|unique|list %}
-    {% set has_brother = 'brother' in ((scanners or [])|map(attribute='name')|join(' ')|lower) %}
-    <details class="fold" style="margin-top:12px"><summary>Where to enter this on the printer</summary><div class="small">
-      {% if no_folder %}
-      <div class="flash warn" style="margin:4px 0 10px"><strong>{{ no_folder|join(', ') }}</strong>
-        {{ 'is a home model that' if no_folder|length == 1 else 'are home models that' }} can't send scans to a folder:
-        HP's ENVY, DeskJet, Smart Tank and Tango printers only scan to the HP Smart app, a computer running HP's software, or email.
-        Nothing to set up there; use the <a href="{{ url_for('scan') }}">Scan</a> page for {{ 'it' if no_folder|length == 1 else 'them' }} instead.</div>
-      {% endif %}
-      {% if web_scanners or not no_folder %}
-      <ol>
-        <li>Open the printer's settings page in a browser and log in{% if web_scanners %}:
-          {% for s in web_scanners|unique(attribute='web') %}<a href="{{ s.web }}" target="_blank" rel="noopener">{{ s.name }} ↗</a>{% if not loop.last %} · {% endif %}{% endfor %}{% endif %}.
-          The admin password is often on a label on the printer.</li>
-        <li>Find the scan destination settings. Brands call it <strong>Scan to FTP</strong>, <strong>Scan to Network Folder</strong>,
-          <strong>Scan to Folder</strong>, or an <strong>Address book → FTP destination</strong>.</li>
-        <li>Create a profile named “PrintScan Hub” with the values above, and save.</li>
-        <li>On the printer's screen: <strong>Scan → FTP / Network → PrintScan Hub</strong>.</li>
-      </ol>
-      <p class="muted">Some home printers can only scan to email or to the maker's app. If yours has no FTP or network-folder option,
-        use the <a href="{{ url_for('scan') }}">Scan</a> page instead: it works with any scanner listed above.</p>
-      {% endif %}
-      {% if has_brother %}
-      <p style="margin-bottom:4px"><strong>Brother</strong> (detected on your network):</p>
-      <ol>
-        <li>Settings page → log in with the password marked “Pwd” on the printer's label.</li>
-        <li><strong>Scan → Scan to FTP/SFTP/Network/SharePoint</strong>: set Profile 1 to <strong>FTP</strong> and click Submit.</li>
-        <li><strong>Scan → Scan to FTP/SFTP/Network/SharePoint Profile → Profile 1</strong>: enter the values above.</li>
-        <li>On the printer: <strong>Scan → to FTP/SFTP → PrintScan Hub → Start</strong>.</li>
-      </ol>
-      {% endif %}
-    </div></details>
     {% if env.vm %}
       <p class="small muted">Running on {{ env.vm }}: if the printer reports “Server timeout” or “Connection failed”, allow inbound ports
         {{ inbox.ftp_port }} and 21100–21110 in Windows Firewall for Docker Desktop.</p>

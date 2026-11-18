@@ -320,8 +320,9 @@ SMB share (`\\<hub>\scans`) on Linux hosts. Anything saved there shows up under 
 on the Scan page.
 
 1. In `.env`, set `HUB_ADDRESS` (the hub's LAN IP) and `SCAN_INBOX_PASSWORD`, then run `docker compose up -d`.
-2. Open **Admin → Scan to hub folder**. It lists the exact values to enter in the printer's
-   "Scan to FTP" / "Scan to Network" profile, with steps for Brother.
+2. Open **Admin → Scanners → Scan to hub via FTP**. It lists the exact values to enter in the printer's
+   "Scan to FTP" / "Scan to Network" profile. Only printers with that option can use this; many
+   home models (e.g. HP ENVY, DeskJet) can't, and use the Scan page instead.
 3. On the printer: **Scan → FTP → (profile) → Start**.
 
 Leave **Passive mode** on. On Docker Desktop only FTP is available, because Windows already uses port 445.

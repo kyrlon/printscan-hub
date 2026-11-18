@@ -411,11 +411,6 @@ def _base_name(name):
     return re.sub(r"\s*\((?:usb|network|wi-?fi)\)\s*$", "", name or "", flags=re.I).strip().lower()
 
 
-# Home models whose scan button can't save to FTP / a network folder (only to the
-# maker's app, a computer running the maker's software, or email).
-NO_SCAN_TO_FOLDER = re.compile(r"\bHP\b.*\b(ENVY|DeskJet|Smart ?Tank|Tango|Photosmart|AMP)\b", re.I)
-
-
 def detected_scanners():
     """What the scan app (SANE) found, as reported by the scanner container."""
     try:
@@ -446,9 +441,7 @@ def detected_scanners():
                     "web": f"http://{host}/" if host and not local else None,
                     "res_range": f"{min(res)}–{max(res)} dpi" if res else "",
                     "serial": ident.get("serial"), "uuid": ident.get("uuid"),
-                    "mac_tag": tag.group(1).upper() if tag else None,
-                    "no_folder": bool(NO_SCAN_TO_FOLDER.search(d.get("name") or "")),
-                    "short_name": re.sub(r"\s*(\[[0-9A-Fa-f]{6}\]|\(USB\))", "", d.get("name") or "").strip()})
+                    "mac_tag": tag.group(1).upper() if tag else None})
 
     # Same physical device reached two ways (USB + Wi-Fi): match on UUID or serial,
     # else on the name without the "(USB)" suffix.
