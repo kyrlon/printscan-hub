@@ -27,11 +27,11 @@ RUN sed -i 's/this\.params\.source=\([A-Za-z_$]*\)\.params\.source||\([A-Za-z_$]
 RUN sed -i 's/^escl$/#escl  (disabled: sane-airscan handles eSCL)/' /etc/sane.d/dll.conf \
     && ! grep -qx escl /etc/sane.d/dll.conf
 
-# Hover descriptions for the scan settings, and the feeder status shown under
-# the Device field.
-COPY scanner/hub-tooltips.js scanner/hub-feeder.js /usr/lib/scanservjs/client/
-RUN sed -i 's#</body>#<script src="hub-tooltips.js"></script><script src="hub-feeder.js"></script></body>#' /usr/lib/scanservjs/client/index.html \
-    && grep -q 'hub-feeder.js' /usr/lib/scanservjs/client/index.html
+# Hover descriptions for the scan settings (press and hold on touch screens),
+# and the feeder status shown under the Device field.
+COPY scanner/hub-tooltips.js scanner/hub-feeder.js hub/portal/static/longpress-tips.js /usr/lib/scanservjs/client/
+RUN sed -i 's#</body>#<script src="hub-tooltips.js"></script><script src="hub-feeder.js"></script><script src="longpress-tips.js"></script></body>#' /usr/lib/scanservjs/client/index.html \
+    && grep -q 'longpress-tips.js' /usr/lib/scanservjs/client/index.html
 
 # Same browser-tab icon as the hub portal (replaces scanservjs' own icon).
 COPY hub/portal/static/icon.svg /usr/lib/scanservjs/client/hub-icon.svg

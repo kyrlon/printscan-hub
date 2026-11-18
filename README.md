@@ -270,7 +270,8 @@ without pressing ↻.
 
 The **Source** list on the Scan page comes from each scanner, so it differs by device:
 flatbed-only models show just *Flatbed*, and models with a feeder add *ADF*, *ADF Duplex*,
-*ADF Front/Back* or similar. Hover over any setting for a short description.
+*ADF Front/Back* or similar. Hover over any setting for a short description; on a phone or tablet, press and hold it. This works
+throughout the portal too.
 
 `SCAN_DEFAULT_SOURCE` in `.env` sets where scans start:
 
