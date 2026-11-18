@@ -407,9 +407,17 @@
       {% endif %}
     </table></div>
 
-    {% set web_scanners = (scanners or [])|selectattr('web')|list %}
+    {% set web_scanners = (scanners or [])|selectattr('web')|rejectattr('no_folder')|list %}
+    {% set no_folder = (scanners or [])|selectattr('no_folder')|map(attribute='short_name')|unique|list %}
     {% set has_brother = 'brother' in ((scanners or [])|map(attribute='name')|join(' ')|lower) %}
     <details class="fold" style="margin-top:12px"><summary>Where to enter this on the printer</summary><div class="small">
+      {% if no_folder %}
+      <div class="flash warn" style="margin:4px 0 10px"><strong>{{ no_folder|join(', ') }}</strong>
+        {{ 'is a home model that' if no_folder|length == 1 else 'are home models that' }} can't send scans to a folder:
+        HP's ENVY, DeskJet, Smart Tank and Tango printers only scan to the HP Smart app, a computer running HP's software, or email.
+        Nothing to set up there; use the <a href="{{ url_for('scan') }}">Scan</a> page for {{ 'it' if no_folder|length == 1 else 'them' }} instead.</div>
+      {% endif %}
+      {% if web_scanners or not no_folder %}
       <ol>
         <li>Open the printer's settings page in a browser and log in{% if web_scanners %}:
           {% for s in web_scanners|unique(attribute='web') %}<a href="{{ s.web }}" target="_blank" rel="noopener">{{ s.name }} ↗</a>{% if not loop.last %} · {% endif %}{% endfor %}{% endif %}.
@@ -421,6 +429,7 @@
       </ol>
       <p class="muted">Some home printers can only scan to email or to the maker's app. If yours has no FTP or network-folder option,
         use the <a href="{{ url_for('scan') }}">Scan</a> page instead: it works with any scanner listed above.</p>
+      {% endif %}
       {% if has_brother %}
       <p style="margin-bottom:4px"><strong>Brother</strong> (detected on your network):</p>
       <ol>
