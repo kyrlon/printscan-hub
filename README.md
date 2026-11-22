@@ -197,8 +197,9 @@ If your printer isn't covered, there are three ways to add a driver. All three a
 container is rebuilt or updated:
 
 1. **Web upload**: Admin → Drivers → upload a vendor `.deb`, a `.ppd`/`.ppd.gz`, or a `.sh` install script.
-2. **Debian package**: Admin → Drivers → type a package name (e.g. `printer-driver-brlaser`).
-   Use *Search for a driver package* if you don't know the name.
+2. **Debian package**: Admin → Drivers → *Find a driver for your printer*, type the make and model, then click
+   **Install** next to a matching package marked *not installed*. If you already know the name (e.g.
+   `printer-driver-brlaser`), use *Advanced: install Debian packages by name*.
 3. **Drop files in the folder**, then click *Re-install all* (or restart the container):
 
    ```

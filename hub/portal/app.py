@@ -1350,7 +1350,12 @@ def admin_driver_search():
         flash("Search term should be 2-60 letters/numbers.", "error")
         return redirect(url_for("admin") + "#drivers")
     rc, out = run_hub_driver("search", term, timeout=300)
-    return render_template("result.html", title=f"Driver search: {term}", ok=True, output=out)
+    # Packages hub-driver marked "not installed" get an Install button on the page.
+    section = out.split("== Driver packages in Debian ==", 1)[-1].split("== What this means", 1)[0]
+    packages = [{"name": m.group(1), "desc": m.group(2).strip()}
+                for m in re.finditer(r"^  ([a-z0-9][a-z0-9+.:-]+)\s+not installed\s+(.*)$", section, re.M)]
+    return render_template("result.html", title=f"Driver search: {term}", ok=True, output=out,
+                           packages=packages, show_status=False)
 
 
 @app.get("/admin/scan-sessions/<key>/preview.jpg")

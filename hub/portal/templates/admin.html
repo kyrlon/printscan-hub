@@ -289,10 +289,18 @@
 
 <div class="card" id="drivers">
   <h2>Drivers</h2>
-  <p class="muted small">Everything installed here is remembered in the <code>drivers/printer/</code> folder and re-installed automatically
-    when the container is rebuilt or updated. You can also just drop files into that folder and click <em>Re-install all</em>.</p>
+  <p class="muted small">Most printers from the last ~10 years need nothing here: add them with the built-in
+    <code>everywhere</code> driver. The hub also already includes about 17,000 drivers for older models. Use this
+    section only when your printer isn't covered.</p>
 
   <div class="row" style="gap:16px">
+    <form method="get" action="{{ url_for('admin_driver_search') }}" data-busy="Searching…">
+      <label for="term">Find a driver for your printer</label>
+      <div class="actions"><input id="term" type="text" name="term" placeholder="e.g. brother hl-l2350" style="flex:1">
+        <button class="secondary" type="submit">Search</button></div>
+      <p class="muted small">Type the make and model. Shows the drivers already installed and any open-source
+        driver packages from Debian you can install with one click.</p>
+    </form>
     <form method="post" action="{{ url_for('admin_driver_upload') }}" enctype="multipart/form-data">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
       <label>Upload driver files <span class="pill" style="font-weight:500">max {{ max_driver_mb }} MB total</span></label>
@@ -302,22 +310,24 @@
         or a <code>.sh</code> install script. Use the Linux “Debian / Ubuntu / .deb” download from the vendor site.</p>
       <button type="submit">Upload &amp; install</button>
     </form>
-    <div>
-      <form method="post" action="{{ url_for('admin_driver_apt') }}">
-        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-        <label for="packages">Install Debian driver packages</label>
-        <input id="packages" type="text" name="packages" placeholder="printer-driver-brlaser printer-driver-splix">
-        <button type="submit" style="margin-top:8px">Install</button>
-      </form>
-      <form method="get" action="{{ url_for('admin_driver_search') }}">
-        <label for="term">Search for a driver package</label>
-        <div class="actions"><input id="term" type="text" name="term" placeholder="brother" style="flex:1">
-          <button class="secondary" type="submit">Search</button></div>
-      </form>
-    </div>
   </div>
 
-  <div class="actions" style="margin-top:16px">
+  <details class="fold" style="margin-top:16px"><summary>Advanced: install Debian packages by name</summary>
+    <div>
+      <form method="post" action="{{ url_for('admin_driver_apt') }}" data-busy="Installing…">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <label for="packages">Debian package names, separated by spaces</label>
+        <input id="packages" type="text" name="packages" placeholder="e.g. printer-driver-brlaser printer-driver-splix">
+        <p class="muted small">For when you already know the package name. Otherwise use <em>Find a driver</em> above,
+          which lists matching packages with an Install button.</p>
+        <button type="submit">Install</button>
+      </form>
+    </div></details>
+
+  <p class="muted small" style="margin:16px 0 0">Everything installed here is remembered in the <code>drivers/printer/</code>
+    folder and re-installed automatically when the container is rebuilt or updated. You can also drop files into that
+    folder and click <em>Re-install all</em>.</p>
+  <div class="actions" style="margin-top:8px">
     <form class="inline" method="post" action="{{ url_for('admin_driver_sync') }}">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
       <button class="secondary">Re-install all from drivers folder</button>
