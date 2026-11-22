@@ -2,8 +2,12 @@
 # Prepare a Linux host (Debian, Ubuntu, Raspberry Pi OS) for PrintScan Hub.
 #
 #   scripts/linux-host.sh status           check services, ports and printers (read-only)
-#   scripts/linux-host.sh prepare          stop the host's own CUPS so the hub can use port 631,
-#                                          and make sure avahi-daemon + ipp-usb are installed
+#   scripts/linux-host.sh prepare [opts]   stop the host's own CUPS so the hub can use port 631,
+#                                          then install what's missing. With no options it asks
+#                                          about each one; options skip the questions:
+#        --all  (or -y)                    install everything missing: avahi-daemon, ipp-usb, Docker
+#        --avahi  --ipp-usb  --docker      install only the ones named (combine freely)
+#        --none                            install nothing, just stop the host's CUPS
 #   scripts/linux-host.sh restore          turn the host's CUPS back on (stop the hub first)
 #   scripts/linux-host.sh install-docker   install Docker Engine + Compose from Docker's repository
 #
@@ -14,7 +18,8 @@ HOST_CUPS_UNITS=(cups-browsed.service cups.service cups.socket cups.path)
 
 # Ports from the hub's .env (next to this script's folder), with the defaults.
 ENV_FILE="$(cd "$(dirname "$0")/.." && pwd)/.env"
-env_val() { [ -f "$ENV_FILE" ] && sed -n "s/^$1=\([0-9]*\).*/\1/p" "$ENV_FILE" | tail -1; }
+# (No .env yet is normal: the README runs prepare before copying it. Don't let set -e exit then.)
+env_val() { [ -f "$ENV_FILE" ] || return 0; sed -n "s/^$1=\([0-9]*\).*/\1/p" "$ENV_FILE" | tail -1; }
 PORTAL_PORT=$(env_val PORTAL_PORT); PORTAL_PORT=${PORTAL_PORT:-80}
 CUPS_PORT=$(env_val CUPS_PORT);     CUPS_PORT=${CUPS_PORT:-631}
 SCAN_PORT=$(env_val SCAN_PORT);     SCAN_PORT=${SCAN_PORT:-8080}
@@ -26,9 +31,11 @@ ok()   { printf '\033[32m[ok]\033[0m %s\n' "$*"; }
 
 as_root() { if [ "$(id -u)" -ne 0 ]; then exec sudo -E bash "$0" "$@"; fi; }
 
+usage() { sed -n '2,20p' "$0" | sed -n '/^#/!q;p' | sed 's/^# \{0,1\}//'; }
+
 os_family() {
   . /etc/os-release
-  case " $ID $ID_LIKE " in
+  case " $ID ${ID_LIKE:-} " in
     *" debian "*|*" ubuntu "*|*" raspbian "*) echo debian ;;
     *) echo other ;;
   esac
@@ -83,9 +90,67 @@ status() {
   fi
 }
 
+# Ask a yes/no question on the terminal. $2 is the default (y or n).
+ask() {
+  local reply hint="[Y/n]"; [ "$2" = n ] && hint="[y/N]"
+  read -r -p "    $1 $hint " reply </dev/tty || reply=""
+  reply=${reply:-$2}
+  [[ "$reply" =~ ^[Yy] ]]
+}
+
+has_usb_printer() {
+  lsusb -v 2>/dev/null | grep -q 'bInterfaceClass *7 Printer' || ls /dev/usb/lp* >/dev/null 2>&1
+}
+
 prepare() {
-  as_root prepare
+  as_root prepare "$@"
   [ "$(os_family)" = debian ] || { warn "prepare only knows Debian-family systems; stop your CUPS service by hand."; exit 1; }
+
+  # What to install: ask (default), everything (--all), or exactly the named ones.
+  local mode=ask want_avahi=0 want_ippusb=0 want_docker=0 a
+  for a in "$@"; do
+    case "$a" in
+      --all|-y|--yes)  mode=all ;;
+      --avahi)         mode=pick; want_avahi=1 ;;
+      --ipp-usb)       mode=pick; want_ippusb=1 ;;
+      --docker)        mode=pick; want_docker=1 ;;
+      --none)          mode=pick ;;
+      *) warn "Unknown option: $a"; usage; exit 2 ;;
+    esac
+  done
+  if [ "$mode" = ask ] && ! { : </dev/tty; } 2>/dev/null; then
+    mode=all; say "No terminal to ask on: installing everything that's missing (same as --all)."
+  fi
+
+  local have_avahi=0 have_ippusb=0 have_docker=0
+  dpkg -s avahi-daemon >/dev/null 2>&1 && have_avahi=1
+  dpkg -s ipp-usb      >/dev/null 2>&1 && have_ippusb=1
+  command -v docker    >/dev/null      && have_docker=1
+
+  if [ "$mode" = all ]; then
+    want_avahi=1; want_ippusb=1; want_docker=1
+  elif [ "$mode" = ask ]; then
+    if [ $have_avahi = 1 ] && [ $have_ippusb = 1 ] && [ $have_docker = 1 ]; then
+      ok "avahi-daemon, ipp-usb and Docker are already installed."
+    else
+      say "Choose what to install (Enter accepts the default)"
+    fi
+    if [ $have_avahi = 0 ]; then
+      echo "    avahi-daemon: lets the hub find network printers and scanners automatically,"
+      echo "    and lets phones and laptops find the hub's printers (AirPrint / Mopria)."
+      ask "Install avahi-daemon?" y && want_avahi=1
+    fi
+    if [ $have_ippusb = 0 ]; then
+      local def=n; has_usb_printer && def=y
+      echo "    ipp-usb: only needed for printers plugged into this machine by USB. Shares them"
+      echo "    driverlessly (print and scan) at http://localhost:60000.$([ $def = y ] && echo ' A USB printer is connected now.')"
+      ask "Install ipp-usb?" "$def" && want_ippusb=1
+    fi
+    if [ $have_docker = 0 ]; then
+      echo "    Docker: runs the hub itself. Installed from Docker's own repository."
+      ask "Install Docker Engine + Compose?" y && want_docker=1
+    fi
+  fi
 
   say "Stopping and disabling the host's CUPS (the hub runs its own on port 631)"
   for u in "${HOST_CUPS_UNITS[@]}"; do
@@ -93,19 +158,25 @@ prepare() {
   done
   ok "cups: $(unit_state cups), cups-browsed: $(unit_state cups-browsed)"
 
-  missing=()
-  dpkg -s avahi-daemon >/dev/null 2>&1 || missing+=(avahi-daemon)
-  dpkg -s ipp-usb >/dev/null 2>&1 || missing+=(ipp-usb)
-  if [ ${#missing[@]} -gt 0 ]; then
-    say "Installing ${missing[*]} (printer discovery; driverless USB printers/scanners)"
-    apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${missing[@]}"
+  local pkgs=()
+  [ $want_avahi = 1 ]  && [ $have_avahi = 0 ]  && pkgs+=(avahi-daemon)
+  [ $want_ippusb = 1 ] && [ $have_ippusb = 0 ] && pkgs+=(ipp-usb)
+  if [ ${#pkgs[@]} -gt 0 ]; then
+    say "Installing ${pkgs[*]}"
+    apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${pkgs[@]}"
   fi
-  systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
+  if dpkg -s avahi-daemon >/dev/null 2>&1; then
+    systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
+  fi
   ok "avahi-daemon: $(unit_state avahi-daemon), ipp-usb: $(unit_state ipp-usb) (ipp-usb starts when a supported USB printer is plugged in)"
+  [ $want_docker = 1 ] && [ $have_docker = 0 ] && do_install_docker
+  if [ ${#pkgs[@]} -gt 0 ] && command -v docker >/dev/null \
+     && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx printscan-hub; then
+    warn "The hub is already running: restart it so it picks up the change (docker compose restart hub)."
+  fi
   echo
   status
 }
-
 restore() {
   as_root restore
   if command -v docker >/dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx printscan-hub; then
@@ -123,9 +194,13 @@ restore() {
 
 install_docker() {
   as_root install-docker
+  do_install_docker
+}
+
+do_install_docker() {
   [ "$(os_family)" = debian ] || { warn "Only Debian-family systems are handled; see https://docs.docker.com/engine/install/"; exit 1; }
   . /etc/os-release
-  repo=debian; [ "$ID" = ubuntu ] || [[ " $ID_LIKE " == *" ubuntu "* ]] && repo=ubuntu
+  repo=debian; [ "$ID" = ubuntu ] || [[ " ${ID_LIKE:-} " == *" ubuntu "* ]] && repo=ubuntu
   codename=${UBUNTU_CODENAME:-$VERSION_CODENAME}
   say "Installing Docker Engine + Compose from download.docker.com ($repo $codename)"
   apt-get update -qq
@@ -146,10 +221,12 @@ install_docker() {
   ok "$(docker --version) | $(docker compose version)"
 }
 
-case "${1:-status}" in
+cmd="${1:-status}"; shift || true
+case "$cmd" in
   status)          status ;;
-  prepare)         prepare ;;
+  prepare)         prepare "$@" ;;
   restore)         restore ;;
   install-docker)  install_docker ;;
-  *) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  -h|--help|help) usage ;;
+  *) usage; exit 2 ;;
 esac

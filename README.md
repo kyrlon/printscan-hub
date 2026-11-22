@@ -88,8 +88,7 @@ Best on a **Linux** host: a Raspberry Pi, mini PC, NAS or VM.
 
 ```bash
 git clone https://github.com/kyrlon/printscan-hub.git && cd printscan-hub
-scripts/linux-host.sh install-docker   # only if Docker isn't installed yet
-scripts/linux-host.sh prepare          # stop the host's own CUPS (see below)
+scripts/linux-host.sh prepare          # stop the host's CUPS; asks to install Docker, Avahi, ipp-usb (see below)
 cp .env.example .env                   # set ADMIN_PASSWORD and HUB_ADDRESS (this machine's LAN IP)
 docker compose up -d --build
 ```
@@ -108,12 +107,15 @@ does this for you:
 | Command | What it does |
 |---|---|
 | `scripts/linux-host.sh status` | Read-only check: host CUPS/Avahi/ipp-usb/Docker, which hub ports are free, USB printers |
-| `scripts/linux-host.sh prepare` | Stops and disables the host's `cups`/`cups-browsed`; installs and starts `avahi-daemon` and `ipp-usb` if missing |
+| `scripts/linux-host.sh prepare` | Stops and disables the host's `cups`/`cups-browsed`, then asks whether to install whatever is missing: `avahi-daemon`, `ipp-usb` (only for USB printers) and Docker |
+| `scripts/linux-host.sh prepare --all` | Same, without questions: installs everything missing. Pick individual ones with `--avahi`, `--ipp-usb`, `--docker` (combine freely), or `--none` to only stop the host's CUPS |
 | `scripts/linux-host.sh restore` | Turns the host's CUPS back on (run `docker compose down` first) |
 | `scripts/linux-host.sh install-docker` | Installs Docker Engine + Compose from Docker's own repository and adds you to the `docker` group |
 
-The commands that change the system ask for `sudo`. Keep **Avahi** (discovery) and **ipp-usb** running:
-the hub uses both.
+The commands that change the system ask for `sudo`. Minimal systems (DietPi, Debian netinst, Ubuntu Server) usually
+don't have Avahi installed, so let `prepare` add it. Keep **Avahi** (discovery) running, and **ipp-usb**
+if you have a USB printer: the hub uses both. If `prepare` installed Docker, log out and back in before
+the `docker compose` step so you can run Docker without `sudo`.
 
 **Port 631 already taken, and you want to keep it that way?** Set `CUPS_PORT` in `.env` (e.g.
 `CUPS_PORT=8631`) and run `docker compose up -d`. The hub's CUPS moves to that port and the host's CUPS
