@@ -101,7 +101,7 @@
               {% if d.same_as %}<span class="pill same" title="Same serial number as the printer behind this queue, reached another way (e.g. Wi-Fi instead of USB). Adding it gives a second queue for the same printer.">⚠ same printer as <strong>{{ d.same_as }}</strong></span><br>{% endif %}
               <a class="btn secondary" style="padding:3px 10px;font-size:13px;{% if d.same_as %}margin-top:4px{% endif %}"
                  href="{{ url_for('admin', uri=d.uri, model=d.suggest or prefill_model, info=d.info, same=d.same_as or None) }}#add-form"
-                 data-busy="Opening…" title="Fill in step 2 below with this printer; then press Add printer there">Add</a>
+                 data-busy="Adding…" title="Fill in step 2 below with this printer; then press Add printer there">Add</a>
             {% endif %}</td></tr>
       {% endfor %}
     </table></div>
