@@ -451,7 +451,7 @@ anything you had to change.
 | `inbox/` | FTP/SMB drop folder for the printer's own Scan button |
 | `docker-compose.desktop.yml` | Override for Docker Desktop (port mapping instead of host networking) |
 | `shared/hub-driver` | The driver installer used by both images |
-| `scripts/linux-host.sh` | Linux host helper: status, prepare/restore host CUPS, install Docker |
+| `scripts/linux-host.sh` | Linux host helper: status check, stop/restore the host's CUPS, install Avahi, ipp-usb and Docker (`prepare`, see [Linux host prep](#linux-host-prep-why-stop-the-hosts-cups)) |
 | `docs/` | Images used in this README |
 
 `hub/cupsd.conf` is only the default. After the first start, edit `data/cups/cupsd.conf` and
