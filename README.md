@@ -42,7 +42,7 @@ New to printer and scanner jargon (ADF, IPP, eSCL, PPD…)? See [Help: terms exp
 | Container | Base image | What runs inside |
 |---|---|---|
 | **hub** (`printscan-hub`) | Debian 12 (bookworm-slim) | **CUPS** print server and its drivers, the **web portal** (Python/Flask, served by gunicorn, talks to CUPS via pycups), **LibreOffice** to turn Office files into PDF, **Avahi** for printer discovery, the `hub-driver` installer, and the gateway to the scan page that keeps private scans private (SQLite, in `data/portal/`) |
-| **scanner** (`printscan-scanner`) | [`sbs20/scanservjs`](https://hub.docker.com/r/sbs20/scanservjs) | **scanservjs** web scanning app on top of **SANE** and **sane-airscan**, plus the hub's additions: driver installer, feeder detection, Letter default, tooltips, "Scan now" label |
+| **scanner** (`printscan-scanner`) | [`sbs20/scanservjs`](https://hub.docker.com/r/sbs20/scanservjs) | **scanservjs** web scanning app on top of **SANE** and **sane-airscan**, plus the hub's additions: driver installer, feeder detection, Letter default, tooltips (press and hold on touch screens), "Scan now" label |
 | **inbox** (`printscan-inbox`) | Alpine 3.20 | **vsftpd** FTP server (and **Samba** on Linux hosts) that saves the printer's own scans into `scans/` |
 
 The scan app isn't reachable on its own port. The portal serves it at `/scan/app/` and shows it inside its **Scan** tab,
@@ -55,7 +55,7 @@ PrintScan Hub mostly wires together existing open-source projects. Many thanks t
 | Project | Used for |
 |---|---|
 | [CUPS](https://openprinting.github.io/cups/) + [cups-filters](https://github.com/OpenPrinting/cups-filters) | Print server, print queues, IPP sharing, converting documents for printers |
-| [OpenPrinting](https://openprinting.github.io/) drivers: Gutenprint, [HPLIP](https://developers.hp.com/hp-linux-imaging-and-printing), Foomatic, `printer-driver-*` | The roughly 17,000 printer models supported out of the box |
+| [OpenPrinting](https://openprinting.github.io/) drivers: Gutenprint, [HPLIP](https://developers.hp.com/hp-linux-imaging-and-printing), Foomatic, `printer-driver-*` | The thousands of printer models supported out of the box |
 | [scanservjs](https://github.com/sbs20/scanservjs) by [sbs20](https://github.com/sbs20) | The web scanning interface (Scan page) |
 | [SANE](http://www.sane-project.org/) + [sane-airscan](https://github.com/alexpevzner/sane-airscan) | Talking to scanners; driver-free network scanning over eSCL/WSD |
 | [Flask](https://flask.palletsprojects.com/), [gunicorn](https://gunicorn.org/), [pycups](https://github.com/OpenPrinting/pycups) | The hub's web portal and its connection to CUPS |
@@ -79,6 +79,10 @@ scripts/linux-host.sh prepare          # stop the host's own CUPS (see below)
 cp .env.example .env                   # set ADMIN_PASSWORD and HUB_ADDRESS (this machine's LAN IP)
 docker compose up -d --build
 ```
+
+Then open `http://<server>/admin`, click **Scan network & USB for printers**, pick the
+printer, leave the driver as `everywhere` (works for most network printers from
+the last ~10 years), and click **Add printer**.
 
 ### Linux host prep: why stop the host's CUPS?
 
@@ -137,10 +141,6 @@ On Windows, a USB printer can be passed into the VM with
 [usbipd-win](https://github.com/dorssel/usbipd-win) (`usbipd bind` + `usbipd attach --wsl`).
 The warning goes away once the container can see a USB bus.
 
-Open `http://<server>/admin`, click **Scan network & USB for printers**, pick the
-printer, leave the driver as `everywhere` (works for most network printers from
-the last ~10 years), and click **Add printer**.
-
 ## Installing drivers
 
 ### Do you need a driver? Usually not: the `everywhere` driver
@@ -173,7 +173,7 @@ wrongly with `everywhere` (bad margins, a missing feature you need).
 ### Finding and installing a driver
 
 The image already has `printer-driver-all`, HPLIP, Gutenprint, Foomatic and the
-OpenPrinting PPDs (about 17,000 models). Search for yours under **Admin → Add a printer → Driver → Search installed drivers…**
+OpenPrinting PPDs (thousands of models). Search for yours under **Admin → Add a printer → Driver → Search installed drivers…**
 before installing anything.
 
 If your printer isn't covered, there are three ways to add a driver. All three are
@@ -263,8 +263,9 @@ In a name like `airscan:e1:…`, `e` means eSCL (`w` = WSD) and the number is ju
 
 The hub's additions (Letter default, automatic Source, the feeder status under *Device*) run in
 scanservjs' settings hook (`scanservjs/config/config.local.js`) on **every** page load, not only after a
-search. The feeder state is a live question to the scanner (`/eSCL/ScannerStatus`), so it updates
-without pressing ↻.
+search. The feeder state comes from the scanner itself (`/eSCL/ScannerStatus`), so it updates
+without pressing ↻. The answer is reused for up to 15 seconds, and while a scan is running, so
+reloading the page doesn't keep asking a busy scanner.
 
 ## Glass or document feeder?
 
@@ -373,7 +374,8 @@ anything you had to change.
 | Path | Contents |
 |---|---|
 | `data/cups/` | CUPS state: printers, their PPDs, `cupsd.conf`. Back this up. |
-| `data/portal/` | Accounts and which private scan belongs to whom (`portal.db`). Back this up too. |
+| `data/portal/` | Accounts and which private scan belongs to whom (`portal.db`). Back this up too. Also each device's scan preview and session info (`previews/`), which can be deleted |
+| `data/shared/` | Scanners the scan app detected, and the ones hidden on the Admin page |
 | `drivers/printer/`, `drivers/scanner/` | Drivers to re-install on every rebuild |
 | `scans/` | Scanned files |
 | `hub/` | Print hub image: CUPS + portal (`hub/portal/app.py`) |
@@ -397,8 +399,9 @@ The first start after a rebuild takes longer while the drivers install.
 
 ## Security
 
-- Printing, scanning and the job list are open to the **local network** only (CUPS `@LOCAL`).
-  Anyone on the LAN can also cancel jobs from the portal.
+- CUPS (port 631) only accepts clients on the **local network** (`@LOCAL`). The portal (port 80),
+  which serves printing, scanning and the job list, has no network check of its own, so it relies on
+  not being reachable from outside. Anyone who can open it can print, scan and cancel jobs.
 - Admin pages need `ADMIN_USER`/`ADMIN_PASSWORD`. Driver uploads run as root inside a
   privileged container, so pick a strong password.
 - The scan app only listens inside the host (or the containers' private network on Docker Desktop);
@@ -407,22 +410,6 @@ The first start after a rebuild takes longer while the drivers install.
 - Don't expose ports 80/631 (or the inbox's FTP ports) to the internet.
 - To shrink the image by ~400 MB, set `INSTALL_OFFICE=false` in `.env` and rebuild.
   Office files then have to be saved as PDF before uploading.
-
-## To-do: Home Assistant
-
-Ideas for connecting the hub to [Home Assistant](https://www.home-assistant.io/). None of these are built or tested yet.
-
-- [ ] **Printer status and toner sensors.** Try HA's built-in *Internet Printing Protocol (IPP)* integration
-      pointed at a hub queue (`<server>`, port `631`, path `/printers/<queue>`), or at the printer directly. Document what works.
-- [ ] **Hub status endpoint.** A JSON `/api/status` on the portal (printers, toner, alerts, feeder state, recent jobs)
-      for HA `rest` sensors.
-- [ ] **Alerts.** Example HA automations: notify a phone on *toner low*, *out of paper* or *paper jam*.
-- [ ] **Feeder sensor.** A binary sensor for "paper in the document feeder", using the same eSCL check as the Scan page.
-- [ ] **Scan from HA.** A `rest_command` or dashboard button that starts a scan through the scanservjs API
-      (`POST /api/v1/scan`), e.g. "scan to PDF from the feeder".
-- [ ] **New-scan notifications.** Notify HA (webhook) when a file lands in `scans/`, including scans sent from the printer's own Scan button.
-- [ ] **Print from HA.** Send a file or generated text (shopping list, chore chart) to a printer through the portal.
-- [ ] **Packaging.** An HA add-on (Supervisor) or MQTT discovery so the hub's entities appear automatically.
 
 ## Help: terms explained
 
