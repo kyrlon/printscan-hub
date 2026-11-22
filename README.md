@@ -219,8 +219,11 @@ docker exec printscan-hub hub-driver list
 Notes:
 - Download the vendor's **Linux → Debian/Ubuntu (.deb)** package. i386-only packages (common for
   Brother) are handled: 32-bit support is switched on automatically.
-- The hub runs Debian 12 on whatever CPU your host has. On a Raspberry Pi (arm64), x86-only
-  vendor binaries won't run, so use the open-source drivers (`printer-driver-*`, `hplip`, `everywhere`).
+- The hub runs Debian 12 on whatever CPU your host has. On a Raspberry Pi or other ARM board
+  (`armhf` or `arm64`), vendor packages built for x86 (`i386`/`amd64`, which includes most Brother,
+  Canon and Epson downloads) can't run. The hub refuses them with a message instead of installing a
+  driver that would fail on every job. Use `everywhere` or the open-source drivers
+  (`printer-driver-*`, `hplip`) there.
 - Each install is logged to `drivers/printer/install.log`, which you can also read on the admin page.
 
 ### Scanner drivers

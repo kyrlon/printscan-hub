@@ -65,6 +65,16 @@ install_deb() {
   [ -e "$STATE_DIR/done/$s" ] && return 0
   arch=$(dpkg-deb -f "$deb" Architecture 2>/dev/null || echo all)
   host_arch=$(dpkg --print-architecture)
+  # A package built for another CPU installs but can never run (e.g. an x86
+  # Brother driver on a Raspberry Pi), and the dpkg --force-all fallback below
+  # would push it in anyway. i386 on amd64 is fine (multiarch, handled below).
+  if [ "$arch" != all ] && [ "$arch" != "$host_arch" ] && ! { [ "$arch" = i386 ] && [ "$host_arch" = amd64 ]; }; then
+    log "SKIPPED $(basename "$deb"): it is built for '$arch' but this hub runs on '$host_arch'."
+    log "  Its programs can't run on this CPU. Look for a '$host_arch' version from the vendor,"
+    log "  or use the 'everywhere' driver (most printers from the last ~10 years) or an open-source"
+    log "  printer-driver-* package instead."
+    return 3
+  fi
   # Many vendor drivers (notably Brother) still ship i386-only packages.
   if [ "$arch" = i386 ] && [ "$host_arch" = amd64 ] && ! dpkg --print-foreign-architectures | grep -qx i386; then
     log "enabling i386 multiarch for $(basename "$deb")"
@@ -138,6 +148,9 @@ cmd_add() {
     scripts) install_script "$DRIVERS_DIR/$dir/$name" ;;
   esac
   local rc=$?
+  if [ $rc -eq 3 ]; then   # wrong CPU: don't keep it, or every rebuild would retry it
+    rm -f "$DRIVERS_DIR/$dir/$name"; log "removed $dir/$name again"
+  fi
   rm -f /var/cache/cups/ppds.dat 2>/dev/null
   return $rc
 }
