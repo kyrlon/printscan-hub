@@ -1315,6 +1315,30 @@ def admin_driver_apt():
     return render_template("result.html", title="Package install", ok=rc == 0, output=out)
 
 
+DRIVERISH = re.compile(r"print|scan|driver|ppd|cups|sane|foomatic|gutenprint|hplip|splix|brlaser|ptouch|toner|laser|inkjet", re.I)
+
+
+@app.get("/admin/drivers/check")
+@require_admin
+def admin_driver_check():
+    """Look up typed package names before installing: exists? installed? what is it?"""
+    pkgs = list(dict.fromkeys(request.args.get("packages", "").lower().split()))[:20]
+    if not pkgs or not all(re.match(r"^[a-z0-9][a-z0-9+.:-]+$", p) for p in pkgs):
+        flash("Enter Debian package names separated by spaces, e.g. printer-driver-brlaser", "error")
+        return redirect(url_for("admin") + "#drivers")
+    rc, out = run_hub_driver("check", *pkgs, timeout=300)
+    checked = []
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 4 and parts[0] in pkgs:
+            name, status, version, desc = parts
+            checked.append({"name": name, "status": status, "version": version, "desc": desc,
+                            "driverish": bool(DRIVERISH.search(name + " " + desc))})
+    if not checked:
+        return render_template("result.html", title="Check packages", ok=False, output=out)
+    return render_template("check.html", checked=checked,
+                           to_install=[c["name"] for c in checked if c["status"] == "available"])
+
 @app.post("/admin/drivers/sync")
 @require_admin
 def admin_driver_sync():

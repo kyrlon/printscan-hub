@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Check packages · {{ hub_name }}{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Check packages</h1>
+  <p class="muted small">Looked up in Debian's package list. Nothing has been installed yet.</p>
+  <div class="table-scroll"><table>
+    <tr><th>Package</th><th>Status</th><th>What it is</th></tr>
+    {% for c in checked %}
+    <tr>
+      <td><code>{{ c.name }}</code>{% if c.version %}<br><span class="muted small">{{ c.version }}</span>{% endif %}</td>
+      <td>{% if c.status == 'installed' %}<span class="pill idle">already installed</span>
+          {% elif c.status == 'available' %}<span class="pill processing">can be installed</span>
+          {% else %}<span class="pill stopped">not found</span>{% endif %}</td>
+      <td class="small">{% if c.desc %}{{ c.desc }}{% else %}<span class="muted">No Debian package has this name. Check the spelling, or use <em>Find a driver</em>.</span>{% endif %}
+          {% if c.status == 'available' and not c.driverish %}<br><span class="alert warn">This doesn't look like a printer or scanner driver.</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+
+  <div class="actions" style="margin-top:16px;align-items:center">
+    {% if to_install %}
+    <form class="inline" method="post" action="{{ url_for('admin_driver_apt') }}" data-busy="Installing…">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="packages" value="{{ to_install|join(' ') }}">
+      <button title="Download and install from Debian; the hub reinstalls them after every rebuild">Install {{ to_install|join(', ') }}</button>
+    </form>
+    <a class="btn secondary" href="{{ url_for('admin') }}#drivers">Cancel</a>
+    {% else %}
+    <span class="muted small">Nothing to install.</span>
+    <a class="btn" href="{{ url_for('admin') }}#drivers">Back to admin</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

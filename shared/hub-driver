@@ -8,6 +8,8 @@
 #   hub-driver add <file>           copy a .deb / .ppd / .ppd.gz / .sh into
 #                                   $DRIVERS_DIR and install it
 #   hub-driver search <term>        search apt + installed CUPS drivers
+#   hub-driver check <pkg> [pkg...] for each package: installed / available / unknown,
+#                                   version and description (tab-separated)
 #   hub-driver list                 show what is remembered / installed
 #
 # Layout of $DRIVERS_DIR (default /drivers):
@@ -217,8 +219,26 @@ cmd_search() {
   fi
 }
 
-cmd_list() {
-  echo "Drivers dir: $DRIVERS_DIR"
+cmd_check() {
+  [ $# -gt 0 ] || { echo "usage: hub-driver check <pkg> [pkg...]" >&2; return 2; }
+  apt_update >/dev/null 2>&1
+  local p info status version desc
+  for p in "$@"; do
+    info=$(apt-cache show --no-all-versions "$p" 2>/dev/null)
+    version=$(printf '%s\n' "$info" | sed -n 's/^Version: //p' | head -1)
+    desc=$(printf '%s\n' "$info" | sed -n 's/^Description\(-en\)\?: //p' | head -1)
+    if dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'install ok installed'; then
+      status=installed
+    elif [ -n "$info" ]; then
+      status=available
+    else
+      status=unknown
+    fi
+    printf '%s\t%s\t%s\t%s\n' "$p" "$status" "$version" "$desc"
+  done
+}
+
+cmd_list() {  echo "Drivers dir: $DRIVERS_DIR"
   echo "-- apt-packages.txt:"; sed -e 's/#.*//' "$DRIVERS_DIR/apt-packages.txt" | grep -v '^[[:space:]]*$' | sed 's/^/   /'
   shopt -s nullglob
   echo "-- debs:";    for f in "$DRIVERS_DIR"/debs/*;    do echo "   $(basename "$f")"; done
@@ -232,6 +252,7 @@ case "${1:-}" in
   apt)    shift; cmd_apt "$@" ;;
   add)    shift; cmd_add "$@" ;;
   search) shift; cmd_search "$@" ;;
+  check)  shift; cmd_check "$@" ;;
   list)   shift; cmd_list "$@" ;;
   *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
