@@ -1254,12 +1254,31 @@ def admin_add_printer():
         cmd += ["-D", desc]
     if loc:
         cmd += ["-L", loc]
+    try:
+        existed = name in conn().getPrinters()
+    except (RuntimeError, cups.IPPError):
+        existed = True                       # can't tell: never delete it below
     p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if p.returncode != 0:
         hint = (" The printer did not answer as an IPP Everywhere device, so pick a specific driver instead."
                 if model == "everywhere" else "")
         flash(f"Adding printer failed: {(p.stderr or p.stdout).strip()}{hint}", "error")
         return redirect(url_for("admin", uri=uri, model=model) + "#add-form")
+    # When CUPS can't reach the printer, "everywhere" still reports success but makes a
+    # raw queue with no driver (files go out unconverted, options ignored). Catch that.
+    if model == "everywhere":
+        try:
+            made = conn().getPrinters().get(name, {}).get("printer-make-and-model", "")
+        except (RuntimeError, cups.IPPError):
+            made = ""
+        if made == "Local Raw Printer":
+            if not existed:
+                subprocess.run(["lpadmin", "-x", name], capture_output=True)
+            host = device_host_port(uri)[0] or uri
+            flash(f"Couldn't set up {name}: the hub couldn't reach the printer at {host} to ask what it can do, "
+                  "so the driverless (everywhere) driver can't be used. Check the printer is on, and try its IP "
+                  "address instead, e.g. ipp://<printer-ip>/ipp/print. A .local name needs Avahi on the host.", "error")
+            return redirect(url_for("admin", uri=uri, model=model) + "#add-form")
     subprocess.run(["cupsenable", name], capture_output=True)
     subprocess.run(["cupsaccept", name], capture_output=True)
     if request.form.get("default"):

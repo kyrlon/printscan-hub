@@ -30,6 +30,8 @@ services:
       # Replace the Docker VM's D-Bus mount (it's not your PC's and has no avahi).
       - type: tmpfs
         target: /var/run/dbus
+      - type: tmpfs
+        target: /run/avahi-host
 
   scanner:
     network_mode: !reset null

@@ -1,4 +1,4 @@
-﻿# PrintScan Hub
+# PrintScan Hub
 #   http://<server>/        home, upload & print, scanning (/scan), admin
 #   ipp://<server>:631/printers/<queue>   add as a driverless network printer (port: CUPS_PORT)
 # The scan app (scanservjs) only listens inside the host; the portal serves it
@@ -30,6 +30,7 @@ services:
       - ./drivers/printer:/drivers     # drivers to (re)install on every rebuild
       - /dev/bus/usb:/dev/bus/usb
       - /var/run/dbus:/var/run/dbus    # use the host's avahi-daemon if present
+      - /run/avahi-daemon:/run/avahi-host   # its socket, so .local names (BRW….local) resolve too
 
   scanner:
     build:

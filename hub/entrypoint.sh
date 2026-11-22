@@ -61,7 +61,17 @@ if [ "$AVAHI" = auto ]; then
   fi
 fi
 case "$AVAHI" in
-  host)     say "Using the host's avahi-daemon for printer discovery" ;;
+  host)
+    say "Using the host's avahi-daemon for printer discovery"
+    # Discovery goes over D-Bus, but looking up .local names (the addresses discovered
+    # printers get, e.g. BRW849E564E0B85.local) goes through avahi's own socket. Without
+    # it CUPS can't reach those printers and "everywhere" silently makes a raw queue.
+    if [ -S /run/avahi-host/socket ]; then
+      mkdir -p /run/avahi-daemon && ln -sf /run/avahi-host/socket /run/avahi-daemon/socket
+    else
+      say "WARNING: the host's avahi socket isn't mounted (/run/avahi-daemon:/run/avahi-host);"
+      say "         .local printer names won't resolve. Use the printer's IP address instead."
+    fi ;;
   internal)
     if [ -S "$HOST_DBUS" ] && dbus-send --system --print-reply --dest=org.freedesktop.DBus / \
           org.freedesktop.DBus.GetId >/dev/null 2>&1; then
