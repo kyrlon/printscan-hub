@@ -121,7 +121,7 @@
     .size-hint { margin-top:4px; min-height:1.2em; }
     .size-hint.too-big { color:var(--err); font-weight:600; }
     button:disabled { opacity:.45; cursor:not-allowed; }
-    button.busy { opacity:.8; cursor:progress; }
+    button.busy, a.busy { opacity:.8; cursor:progress; } a.busy { pointer-events:none; }
     .spin { display:inline-block; width:.9em; height:.9em; margin-right:6px; vertical-align:-.1em;
             border:2px solid currentColor; border-right-color:transparent; border-radius:50%;
             animation:spin .7s linear infinite; }
@@ -257,9 +257,16 @@ document.addEventListener('submit', function (e) {
   if (!btn) return;
   // Disable after the submit has been dispatched so the button's value is still sent.
   setTimeout(function () { hubBusy(btn, form.dataset.busy); }, 0);
+});// Links marked data-busy="Opening…" (e.g. Add next to a found printer) show the same
+// spinner while the next page loads. Not for new-tab / modified clicks.
+document.addEventListener('click', function (e) {
+  var a = e.target.closest && e.target.closest('a[data-busy]');
+  if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey
+      || a.target === '_blank') return;
+  hubBusy(a, a.dataset.busy);
 });// Coming back with the browser's Back button restores the page from cache: reset.
 window.addEventListener('pageshow', function (e) {
-  if (e.persisted && document.querySelector('button.busy')) location.reload();
+  if (e.persisted && document.querySelector('button.busy, a.busy')) location.reload();
 });
 </script>
 </body>
