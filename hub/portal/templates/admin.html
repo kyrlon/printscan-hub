@@ -294,9 +294,9 @@
     section only when your printer isn't covered.</p>
 
   <div class="row" style="gap:16px">
-    <form method="get" action="{{ url_for('admin_driver_search') }}" data-busy="Searching…">
+    <form id="driver-find" method="get" action="{{ url_for('admin_driver_search') }}" data-busy="Searching…">
       <label for="term">Find a driver for your printer</label>
-      <div class="actions"><input id="term" type="text" name="term" placeholder="e.g. brother hl-l2350" style="flex:1">
+      <div class="actions"><input id="term" type="text" name="term" required placeholder="e.g. brother hl-l2350" style="flex:1">
         <button class="secondary" type="submit">Search</button></div>
       <p class="muted small">Type the make and model. Shows the drivers already installed and any open-source
         driver packages from Debian you can install with one click.</p>
@@ -311,6 +311,31 @@
       <button type="submit">Upload &amp; install</button>
     </form>
   </div>
+  <div id="driver-find-results" aria-live="polite"></div>
+  <script>
+  // Find a driver: show the results here, under the box; the full page is one click away.
+  // Without JavaScript, or if this fails, the form opens the full results page as before.
+  (function () {
+    var form = document.getElementById('driver-find'), out = document.getElementById('driver-find-results');
+    if (!form || !out || !window.fetch) return;
+    form.addEventListener('submit', function (e) {
+      var term = form.term.value.trim();
+      if (!term) return;
+      e.preventDefault();                     // also skips the page-wide busy handler
+      var stop = hubBusy(form.querySelector('button[type=submit]'), 'Searching…');
+      fetch(form.action + '?' + new URLSearchParams({term: term, partial: '1'}), {credentials: 'same-origin'})
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(function (html) {
+          out.innerHTML = '<h3 style="margin:16px 0 8px">Results for “' +
+            term.replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }) +
+            '”</h3>' + html;
+          out.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+        })
+        .catch(function () { form.submit(); })  // fall back to the full page
+        .finally(stop);
+    });
+  })();
+  </script>
 
   <details class="fold" style="margin-top:16px"><summary>Advanced: install Debian packages by name</summary>
     <div>

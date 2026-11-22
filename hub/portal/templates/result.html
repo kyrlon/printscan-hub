@@ -6,28 +6,6 @@
   {% if show_status is not defined or show_status %}
   <div class="flash {{ 'ok' if ok else 'error' }}">{{ 'Finished successfully.' if ok else 'Finished with errors — see output below.' }}</div>
   {% endif %}
-  {% if packages %}
-  <h2>Driver packages you can install</h2>
-  <p class="muted small">These matched your search but aren't installed in the hub yet. Each description says which
-    printers it's for. Installing takes a minute or two; afterwards the new drivers appear under
-    <em>Add a printer → Driver → Search installed drivers…</em> The hub reinstalls them after every rebuild.</p>
-  <div class="table-scroll"><table>
-    {% for p in packages %}
-    <tr>
-      <td><code>{{ p.name }}</code></td>
-      <td class="muted small">{{ p.desc }}</td>
-      <td style="text-align:right">
-        <form class="inline" method="post" action="{{ url_for('admin_driver_apt') }}" data-busy="Installing…">
-          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-          <input type="hidden" name="packages" value="{{ p.name }}">
-          <button class="sm" title="Download and install {{ p.name }} from Debian">Install</button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </table></div>
-  <h2>Full search results</h2>
-  {% endif %}
   <pre>{{ output or '(no output)' }}</pre>
   <a class="btn" href="{{ url_for('admin') }}#drivers">Back to admin</a>
 </div>

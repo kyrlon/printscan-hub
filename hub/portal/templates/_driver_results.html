@@ -1,0 +1,30 @@
+{# Driver search results: shown inline in Admin → Drivers, and on the full page. #}
+<div class="driver-search-results">
+  {% if summary %}<p style="margin:0 0 8px"><strong>{{ summary }}</strong></p>{% endif %}
+  {% if packages %}
+  <p class="small" style="margin:8px 0 4px"><strong>Driver packages you can install</strong>
+    <span class="muted">— not in the hub yet; each description says which printers it's for. Afterwards the drivers appear
+    under <em>Add a printer → Driver → Search installed drivers…</em></span></p>
+  <div class="table-scroll"><table>
+    {% for p in packages %}
+    <tr>
+      <td><code>{{ p.name }}</code></td>
+      <td class="muted small">{{ p.desc }}</td>
+      <td style="text-align:right">
+        <form class="inline" method="post" action="{{ url_for('admin_driver_apt') }}" data-busy="Installing…">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="packages" value="{{ p.name }}">
+          <button class="sm" title="Download and install {{ p.name }} from Debian (takes a minute or two)">Install</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+  {% if meaning %}<p class="muted small" style="white-space:pre-line;margin:8px 0">{{ meaning }}</p>{% endif %}
+  <details class="fold" {% if open_full %}open{% endif %} style="margin-top:8px">
+    <summary>Full search results</summary>
+    <div><pre>{{ output or '(no output)' }}</pre></div>
+  </details>
+  {% if full_url %}<p class="small" style="margin:8px 0 0"><a href="{{ full_url }}" target="_blank" rel="noopener">Open in a new tab ↗</a></p>{% endif %}
+</div>

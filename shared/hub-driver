@@ -208,8 +208,8 @@ cmd_search() {
     echo "Nothing installed in the hub matches."
   fi
   if [ $any_missing = 1 ]; then
-    echo "Packages marked 'not installed' might cover your printer: install one with Install Debian driver"
-    echo "packages, then search again. Each package's description says which models it's for."
+    echo "Packages marked 'not installed' might cover your printer: install one with its Install button"
+    echo "(or Admin -> Drivers -> Advanced), then search again. Each description says which models it's for."
   fi
   if [ "$matched" -eq 0 ] || [ $any_missing = 0 ]; then
     echo "No driver needed? Most printers from the last ~10 years (anything with AirPrint or Mopria) work"

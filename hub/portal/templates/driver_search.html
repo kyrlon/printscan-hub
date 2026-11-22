@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Driver search: {{ term }} · {{ hub_name }}{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Driver search: {{ term }}</h1>
+  {% include "_driver_results.html" %}
+  <a class="btn" href="{{ url_for('admin') }}#drivers" style="margin-top:16px">Back to admin</a>
+</div>
+{% endblock %}

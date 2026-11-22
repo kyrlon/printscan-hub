@@ -221,27 +221,38 @@ document.querySelectorAll('input[type=file][data-max-mb]').forEach(function (inp
 
 // Forms marked data-busy="Searching…" show a spinner and a seconds counter on
 // their button while the page waits, so slow requests don't look stuck.
-document.querySelectorAll('form[data-busy]').forEach(function (form) {
-  form.addEventListener('submit', function (e) {
-    if (e.defaultPrevented) return;            // e.g. a cancelled confirm()
-    var btn = e.submitter || form.querySelector('button[type=submit], button:not([type])');
-    if (!btn) return;
-    var label = form.dataset.busy, t0 = Date.now();
-    // Disable after the submit has been dispatched so the button's value is still sent.
-    setTimeout(function () {
-      btn.disabled = true;
-      btn.classList.add('busy');
-      btn.setAttribute('aria-busy', 'true');
-      var tick = function () {
-        var s = Math.floor((Date.now() - t0) / 1000);
-        btn.innerHTML = '<span class="spin" aria-hidden="true"></span>' + label + (s ? ' ' + s + 's' : '');
-      };
-      tick();
-      setInterval(tick, 1000);
-    }, 0);
-  });
-});
-// Coming back with the browser's Back button restores the page from cache: reset.
+// hubBusy(button, label): spinner + seconds counter on a button; returns a function that undoes it.
+window.hubBusy = function (btn, label) {
+  var t0 = Date.now(), html = btn.innerHTML;
+  btn.disabled = true;
+  btn.classList.add('busy');
+  btn.setAttribute('aria-busy', 'true');
+  var tick = function () {
+    var s = Math.floor((Date.now() - t0) / 1000);
+    btn.innerHTML = '<span class="spin" aria-hidden="true"></span>' + label + (s ? ' ' + s + 's' : '');
+  };
+  tick();
+  var timer = setInterval(tick, 1000);
+  return function () {
+    clearInterval(timer);
+    btn.disabled = false;
+    btn.classList.remove('busy');
+    btn.removeAttribute('aria-busy');
+    btn.innerHTML = html;
+  };
+};
+// Delegated, so forms added to the page later (inline search results) get it too.
+// Form-level handlers run first, so one that calls preventDefault() (a cancelled
+// confirm(), an inline fetch) is skipped here.
+document.addEventListener('submit', function (e) {
+  if (e.defaultPrevented) return;
+  var form = e.target;
+  if (!form.matches || !form.matches('form[data-busy]')) return;
+  var btn = e.submitter || form.querySelector('button[type=submit], button:not([type])');
+  if (!btn) return;
+  // Disable after the submit has been dispatched so the button's value is still sent.
+  setTimeout(function () { hubBusy(btn, form.dataset.busy); }, 0);
+});// Coming back with the browser's Back button restores the page from cache: reset.
 window.addEventListener('pageshow', function (e) {
   if (e.persisted && document.querySelector('button.busy')) location.reload();
 });

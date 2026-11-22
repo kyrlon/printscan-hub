@@ -1378,8 +1378,15 @@ def admin_driver_search():
     section = out.split("== Driver packages in Debian ==", 1)[-1].split("== What this means", 1)[0]
     packages = [{"name": m.group(1), "desc": m.group(2).strip()}
                 for m in re.finditer(r"^  ([a-z0-9][a-z0-9+.:-]+)\s+not installed\s+(.*)$", section, re.M)]
-    return render_template("result.html", title=f"Driver search: {term}", ok=True, output=out,
-                           packages=packages, show_status=False)
+    m = re.search(r"^(None of the .*|\d+ of the .* match.*)$", out, re.M)
+    summary = m.group(1).rstrip(".").split(". Showing")[0] + "." if m else ""
+    meaning = out.split("== What this means ==", 1)[-1].strip() if "== What this means ==" in out else ""
+    meaning = re.sub(r"\n(?=[^A-Z\n])", " ", meaning).replace("->", "→")   # rejoin wrapped sentences
+    ctx = dict(term=term, output=out, packages=packages, summary=summary, meaning=meaning)
+    if request.args.get("partial"):                      # inline in Admin -> Drivers
+        return render_template("_driver_results.html", **ctx,
+                               full_url=url_for("admin_driver_search", term=term))
+    return render_template("driver_search.html", **ctx, open_full=True)
 
 
 @app.get("/admin/scan-sessions/<key>/preview.jpg")
