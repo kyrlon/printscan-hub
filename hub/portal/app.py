@@ -1282,6 +1282,36 @@ def admin_printer_action(name, action):
     return redirect(url_for("admin") + "#printers")
 
 
+def install_summary(ok, out):
+    """One plain sentence for the top of an install result."""
+    skipped = re.search(r"SKIPPED ([^:]+): (.*)", out)
+    if skipped:
+        return f"{skipped.group(1)} wasn't installed: {skipped.group(2)}"
+    if "Skipped: only .deb" in out:
+        return "Not installed: only .deb, .ppd, .ppd.gz and .sh files are supported."
+    if ok:
+        return "Installed. The new drivers now appear under Add a printer → Driver → Search installed drivers…"
+    return "Finished with errors: see the full output."
+
+
+def install_result(title, ok, out):
+    """Inline fragment for the Admin page (partial=1), else the full result page."""
+    ctx = dict(title=title, ok=ok, output=out, summary=install_summary(ok, out), log_url=url_for("admin_driver_log"))
+    if request.form.get("partial"):
+        return render_template("_install_result.html", **ctx)
+    return render_template("result.html", **ctx)
+
+
+@app.get("/admin/drivers/log")
+@require_admin
+def admin_driver_log():
+    """The driver install log (newest at the bottom), e.g. opened in a new tab from an install result."""
+    log = DRIVERS_DIR / "install.log"
+    lines = log.read_text(errors="replace").splitlines()[-400:] if log.exists() else []
+    return render_template("result.html", title="Driver install log", ok=True, show_status=False,
+                           output="\n".join(lines) or "(empty)")
+
+
 @app.post("/admin/drivers/upload")
 @require_admin
 def admin_driver_upload():
@@ -1294,14 +1324,15 @@ def admin_driver_upload():
         for f in files:
             name = secure_filename(f.filename)
             if not re.search(r"\.(deb|ppd|ppd\.gz|sh)$", name, re.I):
-                flash(f"Skipped {f.filename}: only .deb, .ppd, .ppd.gz and .sh are supported.", "error")
+                ok = False
+                outputs.append(f"### {f.filename}\nSkipped: only .deb, .ppd, .ppd.gz and .sh files are supported.")
                 continue
             path = Path(tmp) / name
             f.save(path)
             rc, out = run_hub_driver("add", str(path))
             ok &= rc == 0
             outputs.append(f"### {name}\n{out}")
-    return render_template("result.html", title="Driver install", ok=ok, output="\n\n".join(outputs))
+    return install_result("Driver install", ok, "\n\n".join(outputs))
 
 
 @app.post("/admin/drivers/apt")
@@ -1312,7 +1343,7 @@ def admin_driver_apt():
         flash("Enter Debian package names separated by spaces, e.g. printer-driver-brlaser", "error")
         return redirect(url_for("admin") + "#drivers")
     rc, out = run_hub_driver("apt", *pkgs)
-    return render_template("result.html", title="Package install", ok=rc == 0, output=out)
+    return install_result("Package install", rc == 0, out)
 
 
 DRIVERISH = re.compile(r"print|scan|driver|ppd|cups|sane|foomatic|gutenprint|hplip|splix|brlaser|ptouch|toner|laser|inkjet", re.I)

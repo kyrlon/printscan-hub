@@ -1,0 +1,7 @@
+{# Result of an install (upload or Install button), shown inline in Admin → Drivers. #}
+<div class="flash {{ 'ok' if ok else 'error' }}" style="margin-top:12px">{{ summary }}</div>
+<details class="fold" style="margin-top:8px">
+  <summary>Full output</summary>
+  <div><pre>{{ output or '(no output)' }}</pre></div>
+</details>
+<p class="small" style="margin:8px 0 0"><a href="{{ log_url }}" target="_blank" rel="noopener">Open install log in new tab ↗</a></p>

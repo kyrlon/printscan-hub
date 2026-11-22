@@ -302,6 +302,7 @@
       <p class="muted small">Shows the drivers already installed in the hub and any open-source driver packages from
         Debian, which install with one click.</p>
     </form>
+    <div class="inline-result" aria-live="polite"></div>
     <div id="driver-find-results" aria-live="polite"></div>
     <details class="fold" style="margin-top:12px"><summary>Already know the Debian package name?</summary>
       <div>
@@ -319,7 +320,7 @@
 
   <div class="option-box">
     <h3>Upload the printer maker's driver</h3>
-    <form method="post" action="{{ url_for('admin_driver_upload') }}" enctype="multipart/form-data">
+    <form method="post" action="{{ url_for('admin_driver_upload') }}" enctype="multipart/form-data" data-inline data-busy="Installing…">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
       <label>Driver files <span class="pill" style="font-weight:500">max {{ max_driver_mb }} MB total</span></label>
       <input type="file" name="files" multiple accept=".deb,.ppd,.gz,.sh" data-max-mb="{{ max_driver_mb }}">
@@ -329,6 +330,7 @@
         Packages built for a different CPU than this hub's are refused.</p>
       <button type="submit">Upload &amp; install</button>
     </form>
+    <div class="inline-result" aria-live="polite"></div>
   </div>
   <script>
   // Find a driver: show the results here, under the box; the full page is one click away.
@@ -355,6 +357,32 @@
   })();
   </script>
 
+  <script>
+  // Installs (Upload & install, and the Install buttons in search results) show their
+  // result inside the option box instead of opening a new page. Capture phase, so this
+  // runs before the page-wide busy handler. No JavaScript, no box, or a failed request:
+  // the form submits normally and shows the full result page.
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.matches || !form.matches('form[data-inline]')) return;
+    var box = form.closest('.option-box'), target = box && box.querySelector('.inline-result');
+    if (!target || !window.fetch || !window.FormData) return;
+    e.preventDefault();
+    var btn = e.submitter || form.querySelector('button');
+    var stop = hubBusy(btn, form.dataset.busy || 'Working…');
+    var data = new FormData(form);
+    data.append('partial', '1');
+    fetch(form.action, {method: 'POST', body: data, credentials: 'same-origin'})
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function (html) {
+        target.innerHTML = html;
+        target.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+        if (form.querySelector('input[type=file]')) form.reset();
+      })
+      .catch(function () { form.removeAttribute('data-inline'); form.submit(); })
+      .finally(stop);
+  }, true);
+  </script>
   <p class="muted small" style="margin:16px 0 0">Everything installed here is remembered in the <code>drivers/printer/</code>
     folder and re-installed automatically when the container is rebuilt or updated. You can also drop files into that
     folder and click <em>Re-install all</em>.</p>

@@ -4,7 +4,7 @@
 <div class="card">
   <h1>{{ title }}</h1>
   {% if show_status is not defined or show_status %}
-  <div class="flash {{ 'ok' if ok else 'error' }}">{{ 'Finished successfully.' if ok else 'Finished with errors — see output below.' }}</div>
+  <div class="flash {{ 'ok' if ok else 'error' }}">{{ summary or ('Finished successfully.' if ok else 'Finished with errors — see output below.') }}</div>
   {% endif %}
   <pre>{{ output or '(no output)' }}</pre>
   <a class="btn" href="{{ url_for('admin') }}#drivers">Back to admin</a>
