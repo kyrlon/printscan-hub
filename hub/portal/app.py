@@ -435,6 +435,47 @@ def _base_name(name):
     return re.sub(r"\s+series$", "", n.strip(), flags=re.I).lower()
 
 
+def same_device_groups(entries):
+    """Group entries that are one physical scanner: same UUID, same serial, or same
+    name apart from the connection ('Brother_MFC-L3780CDW' found over eSCL with a
+    serial, 'Brother MFC-L3780CDW series' over WSD without one). Returns one
+    (matched-by, group id) per entry; matched-by is the strongest link in the group."""
+    parent = list(range(len(entries)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    first = {}
+    for i, s in enumerate(entries):
+        keys = [("name", _base_name(s.get("name")))]
+        if s.get("uuid"):
+            keys.append(("uuid", s["uuid"].lower()))
+        if s.get("serial"):
+            keys.append(("serial", s["serial"]))
+        for k in keys:
+            if k not in first:
+                first[k] = i
+            elif k[0] != "name" or not _ids_conflict(s, entries[first[k]]):
+                parent[find(i)] = find(first[k])   # two identical models keep apart by serial
+    roots = [find(i) for i in range(len(entries))]
+    out = []
+    for i, root in enumerate(roots):
+        members = [entries[j] for j in range(len(entries)) if roots[j] == root]
+        def shared(field):                   # an ID two or more members have in common
+            vals = [str(m.get(field) or "").lower() for m in members if m.get(field)]
+            return len(vals) != len(set(vals))
+        out.append(("uuid" if shared("uuid") else "serial" if shared("serial") else "name", root))
+    return out
+
+
+def _ids_conflict(a, b):
+    """True if both report a serial or UUID and they differ: different devices."""
+    return any(a.get(f) and b.get(f) and str(a[f]).lower() != str(b[f]).lower() for f in ("serial", "uuid"))
+
+
 def detected_scanners():
     """What the scan app (SANE) found, as reported by the scanner container."""
     try:
@@ -470,11 +511,9 @@ def detected_scanners():
     # Same physical device reached two ways (USB + Wi-Fi): match on UUID or serial,
     # else on the name without the "(USB)" suffix.
     groups = {}
-    for s in out:
-        key = (("uuid", s["uuid"].lower()) if s["uuid"] else
-               ("serial", s["serial"]) if s["serial"] else ("name", _base_name(s.get("name"))))
-        groups.setdefault(key, []).append(s)
-    for (how, _), members in groups.items():
+    for s, (how, gid) in zip(out, same_device_groups(out)):
+        groups.setdefault(gid, (how, []))[1].append(s)
+    for how, members in groups.values():
         visible = sum(not m["hidden"] for m in members)
         for s in members:
             s["twins"] = [m["connection"] for m in members if m is not s]
@@ -602,20 +641,17 @@ def list_scanners():
     One row per physical scanner, each with its live state."""
     detected, _ = detected_scanners()
     if detected:
+        visible = [s for s in detected if not s["hidden"]]
         rows, seen = [], {}
-        for s in detected:
-            if s["hidden"]:
-                continue
+        for s, (_, gid) in zip(visible, same_device_groups(visible)):
             row = {"name": re.sub(r"\s*\[[0-9A-Fa-f]{6}\]", "", s.get("name") or s.get("id", "")).replace("_", " ").strip(),
                    "url": s.get("url"), "web": s.get("web")}
-            key = (("uuid", s["uuid"].lower()) if s.get("uuid") else
-                   ("serial", s["serial"]) if s.get("serial") else ("name", _base_name(row["name"])))
-            if key in seen:                  # same scanner found twice (eSCL + WSD, USB + Wi-Fi)
-                prev = seen[key]
+            if gid in seen:                  # same scanner found twice (eSCL + WSD, USB + Wi-Fi)
+                prev = seen[gid]
                 if not prev["url"] and row["url"]:
                     prev.update(row)         # keep the one we can ask for its status
                 continue
-            seen[key] = row
+            seen[gid] = row
             rows.append(row)
     else:
         rows = _env_scanners()
