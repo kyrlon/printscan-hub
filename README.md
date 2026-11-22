@@ -9,7 +9,8 @@
 </p>
 <p align="center">
   <strong>One box on your network that holds all the printer and scanner drivers,</strong><br>
-  so other computers don't have to install anything.
+  so other computers don't have to install anything.<br>
+  Even a locked-down work laptop can print and scan: it's just a website.
 </p>
 
 <p align="center">
@@ -29,8 +30,6 @@
 | Full CUPS admin | `http://<server>:631/admin` | same login |
 
 631 is the default; set `CUPS_PORT` in `.env` if that port is taken (see [Linux host prep](#linux-host-prep-why-stop-the-hosts-cups)).
-
-A locked-down work laptop can always use the upload page: it's just a website.
 
 New to printer and scanner jargon (ADF, IPP, eSCL, PPD…)? See [Help: terms explained](#help-terms-explained).
 
