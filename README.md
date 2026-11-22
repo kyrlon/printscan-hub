@@ -69,7 +69,7 @@ PrintScan Hub mostly wires together existing open-source projects. Many thanks t
 | Project | Used for |
 |---|---|
 | [CUPS](https://openprinting.github.io/cups/) + [cups-filters](https://github.com/OpenPrinting/cups-filters) | Print server, print queues, IPP sharing, converting documents for printers |
-| [OpenPrinting](https://openprinting.github.io/) drivers: Gutenprint, [HPLIP](https://developers.hp.com/hp-linux-imaging-and-printing), Foomatic, `printer-driver-*` | The thousands of printer models supported out of the box |
+| [OpenPrinting](https://openprinting.github.io/) drivers: Gutenprint, [HPLIP](https://developers.hp.com/hp-linux-imaging-and-printing), Foomatic, `printer-driver-*` | The roughly 17,000 printer drivers included out of the box |
 | [scanservjs](https://github.com/sbs20/scanservjs) by [sbs20](https://github.com/sbs20) | The web scanning interface (Scan page) |
 | [SANE](http://www.sane-project.org/) + [sane-airscan](https://github.com/alexpevzner/sane-airscan) | Talking to scanners; driver-free network scanning over eSCL/WSD |
 | [Flask](https://flask.palletsprojects.com/), [gunicorn](https://gunicorn.org/), [pycups](https://github.com/OpenPrinting/pycups) | The hub's web portal and its connection to CUPS |
@@ -189,7 +189,7 @@ wrongly with `everywhere` (bad margins, a missing feature you need).
 ### Finding and installing a driver
 
 The image already has `printer-driver-all`, HPLIP, Gutenprint, Foomatic and the
-OpenPrinting PPDs (thousands of models). Search for yours under **Admin → Add a printer → Driver → Search installed drivers…**
+OpenPrinting PPDs (about 17,000 drivers). Search for yours under **Admin → Add a printer → Driver → Search installed drivers…**
 before installing anything.
 
 If your printer isn't covered, there are three ways to add a driver. All three are

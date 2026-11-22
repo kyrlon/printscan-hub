@@ -156,13 +156,64 @@ cmd_add() {
 }
 
 cmd_search() {
-  local term="${1:?usage: hub-driver search <term>}"
-  apt_update >/dev/null 2>&1
-  echo "== Debian packages matching '$term' =="
-  apt-cache search "$term" | grep -Ei 'print|scan|driver|ppd|sane|cups|foomatic' | head -40
+  [ $# -gt 0 ] || { echo "usage: hub-driver search <words...>" >&2; return 2; }
+  local words show=40 total=0 matched=0 p desc state any_missing=0 any_pkg=0
+  read -ra words <<< "$*"                  # "brother mfc" as one argument or several
+  echo "Searched for: ${words[*]} (every word must match)"
+
+  # 1. Drivers already installed in this hub: these can be picked right away.
   if command -v lpinfo >/dev/null; then
-    echo; echo "== Installed CUPS drivers matching '$term' =="
-    lpinfo -m 2>/dev/null | grep -i -- "$term" | head -40
+    local all hits
+    all=$(lpinfo -m 2>/dev/null)
+    total=$(printf '%s\n' "$all" | grep -c .)
+    hits=$(printf '%s\n' "$all" | WORDS="${words[*]}" awk '
+      BEGIN { n = split(tolower(ENVIRON["WORDS"]), w, " ") }
+      { l = tolower($0); for (i = 1; i <= n; i++) if (index(l, w[i]) == 0) next; print }')
+    matched=$(printf '%s' "$hits" | grep -c .)
+    echo
+    echo "== Drivers already installed in the hub =="
+    if [ "$matched" -eq 0 ]; then
+      echo "None of the $total installed drivers match."
+    else
+      echo "$matched of the $total installed drivers match$([ "$matched" -gt "$show" ] && echo ". Showing the first $show: add more words (e.g. the model number) to narrow it down")."
+      printf '%s\n' "$hits" | head -"$show" | sed 's/^[^ ]* /  /'
+      [ "$matched" -gt "$show" ] && echo "  … and $((matched - show)) more not shown"
+    fi
+  fi
+
+  # 2. Debian driver packages: could be installed with "Install Debian driver packages".
+  apt_update >/dev/null 2>&1
+  echo
+  echo "== Driver packages in Debian =="
+  while IFS= read -r line; do
+    p=${line%% - *}; desc=${line#* - }
+    if dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'install ok installed'; then
+      state="installed"
+    else
+      state="not installed"; any_missing=1
+    fi
+    any_pkg=1
+    printf '  %-28s %-14s %s\n' "$p" "$state" "$desc"
+  done < <(apt-cache search "${words[@]}" 2>/dev/null | grep -Ei 'print|scan|driver|ppd|sane|cups|foomatic' | head -"$show")
+  [ $any_pkg = 1 ] || echo "  No Debian driver packages match."
+
+  echo
+  echo "== What this means =="
+  if [ "$matched" -gt 0 ]; then
+    echo "Drivers for the models listed above are ready to use. Check your exact model is among them, then"
+    echo "pick it in Admin -> Add a printer -> Driver -> Search installed drivers…"
+  else
+    echo "Nothing installed in the hub matches."
+  fi
+  if [ $any_missing = 1 ]; then
+    echo "Packages marked 'not installed' might cover your printer: install one with Install Debian driver"
+    echo "packages, then search again. Each package's description says which models it's for."
+  fi
+  if [ "$matched" -eq 0 ] || [ $any_missing = 0 ]; then
+    echo "No driver needed? Most printers from the last ~10 years (anything with AirPrint or Mopria) work"
+    echo "with the built-in 'everywhere' driver: add the printer with an ipp:// address and keep 'everywhere'."
+    local arch; arch=$(dpkg --print-architecture); [ "$arch" = amd64 ] && arch="amd64 or i386"
+    echo "Otherwise upload the vendor's Linux driver (.deb) under Admin -> Drivers (this hub can only use $arch packages)."
   fi
 }
 
