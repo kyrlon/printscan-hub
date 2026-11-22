@@ -66,7 +66,12 @@
     th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
     th { color:var(--muted); font-weight:600; font-size:13px; }
     .table-scroll { overflow-x:auto; }
-    .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; background:var(--bg); border:1px solid var(--line); }
+    .option-box { border:1px solid var(--line); border-radius:12px; padding:16px; margin-top:12px; }
+  .option-box h3 { margin:0 0 10px; font-size:16px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .or-divider { display:flex; align-items:center; gap:12px; margin:12px 0 0; color:var(--muted); font-size:13px; text-transform:uppercase; letter-spacing:.08em; }
+  .or-divider::before, .or-divider::after { content:''; flex:1; border-top:1px solid var(--line); }
+  .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; background:var(--bg); border:1px solid var(--line); }
     .pill.idle, .pill.completed { color:var(--ok); } .pill.stopped, .pill.aborted { color:var(--err); } .pill.processing { color:var(--accent); }
     .flash { padding:10px 14px; border-radius:8px; margin-bottom:16px; }
     .flash.ok { background:var(--okbg); color:var(--ok); } .flash.error { background:var(--errbg); color:var(--err); }

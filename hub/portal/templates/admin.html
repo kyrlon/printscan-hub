@@ -290,28 +290,46 @@
 <div class="card" id="drivers">
   <h2>Drivers</h2>
   <p class="muted small">Most printers from the last ~10 years need nothing here: add them with the built-in
-    <code>everywhere</code> driver. The hub also already includes about 17,000 drivers for older models. Use this
-    section only when your printer isn't covered.</p>
+    <code>everywhere</code> driver. The hub also already includes about 17,000 drivers for older models.
+    If your printer still isn't covered, use <strong>one</strong> of these:</p>
 
-  <div class="row" style="gap:16px">
+  <div class="option-box">
+    <h3>Find an open-source driver <span class="pill">try this first</span></h3>
     <form id="driver-find" method="get" action="{{ url_for('admin_driver_search') }}" data-busy="Searching…">
-      <label for="term">Find a driver for your printer</label>
-      <div class="actions"><input id="term" type="text" name="term" required placeholder="e.g. brother hl-l2350" style="flex:1">
+      <label for="term" class="sr-only">Printer make and model</label>
+      <div class="actions"><input id="term" type="text" name="term" required placeholder="Make and model, e.g. brother hl-l2350" style="flex:1">
         <button class="secondary" type="submit">Search</button></div>
-      <p class="muted small">Type the make and model. Shows the drivers already installed and any open-source
-        driver packages from Debian you can install with one click.</p>
+      <p class="muted small">Shows the drivers already installed in the hub and any open-source driver packages from
+        Debian, which install with one click.</p>
     </form>
+    <div id="driver-find-results" aria-live="polite"></div>
+    <details class="fold" style="margin-top:12px"><summary>Already know the Debian package name?</summary>
+      <div>
+        <form method="get" action="{{ url_for('admin_driver_check') }}" data-busy="Checking…">
+          <label for="packages">Debian package names, separated by spaces</label>
+          <input id="packages" type="text" name="packages" required placeholder="e.g. printer-driver-brlaser printer-driver-splix">
+          <p class="muted small"><em>Check</em> looks each one up and shows what it is and whether it's already installed;
+            you confirm before anything is installed.</p>
+          <button type="submit" class="secondary">Check packages</button>
+        </form>
+      </div></details>
+  </div>
+
+  <div class="or-divider" role="separator"><span>or</span></div>
+
+  <div class="option-box">
+    <h3>Upload the printer maker's driver</h3>
     <form method="post" action="{{ url_for('admin_driver_upload') }}" enctype="multipart/form-data">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-      <label>Upload driver files <span class="pill" style="font-weight:500">max {{ max_driver_mb }} MB total</span></label>
+      <label>Driver files <span class="pill" style="font-weight:500">max {{ max_driver_mb }} MB total</span></label>
       <input type="file" name="files" multiple accept=".deb,.ppd,.gz,.sh" data-max-mb="{{ max_driver_mb }}">
       <div class="size-hint small muted" aria-live="polite"></div>
-      <p class="muted small">Vendor <code>.deb</code> packages (Brother, Epson, Canon, Kyocera…), <code>.ppd</code>/<code>.ppd.gz</code> files,
-        or a <code>.sh</code> install script. Use the Linux “Debian / Ubuntu / .deb” download from the vendor site.</p>
+      <p class="muted small">From the maker's support site, pick the Linux “Debian / Ubuntu (.deb)” download: a
+        <code>.deb</code> package, a <code>.ppd</code>/<code>.ppd.gz</code> file, or a <code>.sh</code> install script.
+        Packages built for a different CPU than this hub's are refused.</p>
       <button type="submit">Upload &amp; install</button>
     </form>
   </div>
-  <div id="driver-find-results" aria-live="polite"></div>
   <script>
   // Find a driver: show the results here, under the box; the full page is one click away.
   // Without JavaScript, or if this fails, the form opens the full results page as before.
@@ -336,18 +354,6 @@
     });
   })();
   </script>
-
-  <details class="fold" style="margin-top:16px"><summary>Advanced: install Debian packages by name</summary>
-    <div>
-      <form method="get" action="{{ url_for('admin_driver_check') }}" data-busy="Checking…">
-        <label for="packages">Debian package names, separated by spaces</label>
-        <input id="packages" type="text" name="packages" required placeholder="e.g. printer-driver-brlaser printer-driver-splix">
-        <p class="muted small">For when you already know the package name. <em>Check</em> looks each one up first and shows
-          what it is and whether it's already installed; you confirm before anything is installed. Otherwise use
-          <em>Find a driver</em> above, which lists matching packages with an Install button.</p>
-        <button type="submit" class="secondary">Check packages</button>
-      </form>
-    </div></details>
 
   <p class="muted small" style="margin:16px 0 0">Everything installed here is remembered in the <code>drivers/printer/</code>
     folder and re-installed automatically when the container is rebuilt or updated. You can also drop files into that
