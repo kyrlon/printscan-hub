@@ -425,6 +425,12 @@ def scan_app(path):
     # Block cross-site requests (another website trying to drive the scanner).
     if request.headers.get("Sec-Fetch-Site") == "cross-site":
         abort(403)
+    # The access checks below match on the path as written, but requests/urllib3
+    # collapses "a/../b" before forwarding, so "api/v1/x/../files" would reach the
+    # unfiltered file list. Refuse anything that isn't already a plain path.
+    if "\\" in path or any(seg in ("", ".", "..") for seg in path.split("/")[:-1]) \
+            or path.split("/")[-1] in (".", ".."):
+        abort(404)
     if path.startswith("api-docs"):
         abort(404)
     touch()

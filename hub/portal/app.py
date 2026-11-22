@@ -103,8 +103,28 @@ USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
 app = Flask(__name__)
 # Hard ceiling for any request; per-page limits are checked in check_limits().
 app.config["MAX_CONTENT_LENGTH"] = int(max(MAX_UPLOAD_MB, MAX_DRIVER_UPLOAD_MB) * 1024 * 1024) + 1024 * 1024
-# Stable across gunicorn workers so flash messages survive redirects.
-app.secret_key = hashlib.sha256(b"printscan-hub:" + ADMIN_PASSWORD.encode()).digest()
+def _load_secret_key():
+    """Random signing key kept next to the database, shared by all gunicorn workers.
+    (It used to be derived from ADMIN_PASSWORD, which let anyone holding a session
+    cookie test password guesses offline, and forge cookies if the password was known.)"""
+    path = os.path.join(os.path.dirname(store.DB_PATH), "secret_key")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(secrets.token_bytes(32))
+    except FileExistsError:
+        pass
+    for _ in range(50):                     # another worker may still be writing it
+        with open(path, "rb") as f:
+            key = f.read()
+        if len(key) == 32:
+            return key
+        time.sleep(0.1)
+    raise RuntimeError(f"{path} is damaged; delete it and restart")
+
+
+app.secret_key = _load_secret_key()
 app.config.update(SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True,
                   PERMANENT_SESSION_LIFETIME=30 * 86400)
 
