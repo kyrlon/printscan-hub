@@ -523,6 +523,27 @@ def detected_scanners():
     return out, data.get("updated", "")
 
 
+_avahi_cache = {"at": 0.0, "ok": True}
+
+
+def avahi_running():
+    """Is an avahi-daemon answering on the D-Bus the hub uses (the host's, or the
+    container's own)? Without it the printer scan can't see printers' ipp:// (Bonjour)
+    addresses. Checked live, cached a minute, so installing Avahi shows up by itself."""
+    if os.environ.get("AVAHI", "auto").lower() == "off" or ENVIRONMENT["vm"]:
+        return True                          # turned off on purpose / Docker Desktop has its own banner
+    if time.time() - _avahi_cache["at"] < 60:
+        return _avahi_cache["ok"]
+    try:
+        ok = subprocess.run(["dbus-send", "--system", "--print-reply", "--reply-timeout=2000",
+                             "--dest=org.freedesktop.Avahi", "/",
+                             "org.freedesktop.Avahi.Server.GetVersionString"],
+                            capture_output=True, timeout=4).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        ok = False
+    _avahi_cache.update(at=time.time(), ok=ok)
+    return ok
+
 def driverless_uri(uri):
     """True if the generic IPP Everywhere driver can talk to this address."""
     u = (uri or "").lower()
@@ -1199,6 +1220,7 @@ def admin():
         prefill_name=queue_name_from(request.args.get("info", "")),
         prefill_driverless=driverless_uri(request.args.get("uri", "")),
         driver_choices=suggest_drivers(request.args.get("info", "")) if request.args.get("uri") else [],
+        avahi_missing=not avahi_running(),
         log_tail=log_tail, weak_password=ADMIN_PASSWORD in ("changeme", "admin", "password"),
         apt_list=(DRIVERS_DIR / "apt-packages.txt").read_text() if (DRIVERS_DIR / "apt-packages.txt").exists() else "",
     )

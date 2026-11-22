@@ -193,6 +193,16 @@
       <code>ipp://&lt;printer-ip&gt;/ipp/print</code> address above, or pick a driver for your model.
       <strong>No driver installed for it yet? Install one first</strong> in <a href="#drivers">Drivers</a> below, then search again.
       <a href="https://github.com/kyrlon/printscan-hub#everywhere-greyed-out" target="_blank" rel="noopener">More ↗</a></p>
+    {% if avahi_missing %}
+    <div class="flash warn" style="margin:10px 0 0" role="note">
+      <strong>⚠ Printer discovery is limited on this host: avahi-daemon isn't running.</strong>
+      Step 1 can't see printers' driverless <code>ipp://</code> addresses, so often only an <code>lpd://</code> or
+      <code>socket://</code> entry shows up and <code>everywhere</code> stays greyed out. To fix it, on the host run
+      <code>scripts/linux-host.sh prepare --avahi</code>, then <code>docker compose restart hub scanner</code> and scan
+      again. Or type the printer's <code>ipp://&lt;printer-ip&gt;/ipp/print</code> address above for now.
+      <a href="https://github.com/kyrlon/printscan-hub#linux-host-prep-why-stop-the-hosts-cups" target="_blank" rel="noopener">More ↗</a>
+    </div>
+    {% endif %}
     <script>
     // "Search installed drivers…": search as you type, click a result to choose it.
     (function () {
