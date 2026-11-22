@@ -84,7 +84,8 @@ entrypoints, `shared/hub-driver`, the scanner add-ons (`scanner/hub-*.js`,
 
 ## Quick start
 
-Best on a **Linux** host: a Raspberry Pi, mini PC, NAS or VM.
+Best on a **Linux** host: a Raspberry Pi, mini PC, NAS or VM. The steps below are for Debian, Ubuntu,
+Raspberry Pi OS and DietPi; for Fedora, RHEL and others see [non-Debian hosts](#on-fedora-rhel-arch-or-another-non-debian-host).
 
 ```bash
 git clone https://github.com/kyrlon/printscan-hub.git && cd printscan-hub
@@ -97,6 +98,28 @@ Then open `http://<server>/admin`, click **Scan network & USB for printers**, pi
 printer, leave the driver as `everywhere` (works for most network printers from
 the last ~10 years), and click **Add printer**.
 
+### On Fedora, RHEL, Arch or another non-Debian host
+
+The containers are **Debian 12 inside** (`debian:bookworm-slim` for the hub; the scan app's image is
+Debian-based too), whatever distribution the host runs. Docker only needs the host's kernel, so the hub
+runs the same on Fedora, RHEL, Rocky, Alma, Arch or openSUSE. What that means:
+
+- **Drivers are Debian packages.** Upload a vendor's **`.deb`** download, not its `.rpm`, and
+  install extra drivers by their Debian names (`printer-driver-brlaser`, not Fedora's package names). This
+  applies on every host, because the drivers live inside the container.
+- **`scripts/linux-host.sh prepare` only knows Debian-family hosts.** Do its steps by hand:
+  - stop the host's CUPS: `sudo systemctl disable --now cups cups-browsed`
+  - install Avahi, and ipp-usb for USB printers: `sudo dnf install avahi ipp-usb` (Fedora/RHEL), then
+    `sudo systemctl enable --now avahi-daemon`
+  - install Docker from [Docker's instructions for your distro](https://docs.docker.com/engine/install/).
+    `scripts/linux-host.sh status` still works anywhere.
+- **SELinux** (on by default on Fedora/RHEL) can block the containers from the `data/`, `drivers/` and
+  `scans/` folders, which shows up as "permission denied" in `docker compose logs`. Check with
+  `getenforce`, and add `:z` to the folder mounts in `docker-compose.yml` (e.g. `./scans:/scans:z`).
+- **firewalld** blocks incoming connections by default. Open what you use, e.g.
+  `sudo firewall-cmd --permanent --add-service={http,ipp,ftp,samba,mdns} && sudo firewall-cmd --reload`.
+
+These hosts aren't in [Tested hardware](#tested-hardware) yet; if you try one, please add a row.
 ### Linux host prep: why stop the host's CUPS?
 
 On Linux the hub uses **host networking**, so its CUPS needs port **631** (or your `CUPS_PORT`) on the machine itself.
@@ -221,7 +244,8 @@ docker exec printscan-hub hub-driver list
 ```
 
 Notes:
-- Download the vendor's **Linux → Debian/Ubuntu (.deb)** package. i386-only packages (common for
+- Download the vendor's **Linux → Debian/Ubuntu (.deb)** package, even if your host runs Fedora or RHEL:
+  the drivers are installed inside the hub's Debian container, so `.rpm` packages don't apply. i386-only packages (common for
   Brother) are handled: 32-bit support is switched on automatically.
 - The hub runs Debian 12 on whatever CPU your host has. On a Raspberry Pi or other ARM board
   (`armhf` or `arm64`), vendor packages built for x86 (`i386`/`amd64`, which includes most Brother,
