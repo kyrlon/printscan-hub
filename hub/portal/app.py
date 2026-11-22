@@ -1221,6 +1221,10 @@ def admin_add_printer():
     if not re.match(r"^[a-z][a-z0-9+.-]*:", uri) or len(uri) > 1024:
         flash("Enter a valid device URI, e.g. ipp://192.168.1.50/ipp/print or socket://192.168.1.50:9100", "error")
         return redirect(url_for("admin", model=model) + "#add-form")
+    if model == "everywhere" and not driverless_uri(uri):
+        flash("The driverless (everywhere) driver needs an ipp://, ipps:// or dnssd://…_ipp… address. "
+              "Use the printer's IPP address (e.g. ipp://<printer-ip>/ipp/print), or pick a driver for this one.", "error")
+        return redirect(url_for("admin", uri=uri) + "#add-form")
 
     cmd = ["lpadmin", "-p", name, "-E", "-v", uri, "-m", model,
            "-o", "printer-is-shared=true", "-o", "printer-error-policy=retry-job"]

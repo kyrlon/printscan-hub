@@ -159,8 +159,10 @@
     {% set choice_names = driver_choices|map(attribute='name')|list %}
     {% set start_search = needs_driver and not picked and not driver_choices %}
     <select id="model" name="model" required>
-      {% if needs_driver and not picked and driver_choices %}<option value="" selected disabled>Choose a driver…</option>{% endif %}
-      {% if prefill_uri and not prefill_driverless %}
+      <option value="" disabled {% if not prefill_uri or (needs_driver and not picked and driver_choices) %}selected{% endif %}>Choose a driver…</option>
+      {% if not prefill_uri %}
+        <option value="everywhere" disabled>Driverless (everywhere): enter or pick an ipp:// address first</option>
+      {% elif not prefill_driverless %}
         <option value="everywhere" disabled>Driverless (everywhere): not available for this address</option>
       {% else %}
         <option value="everywhere" {% if not picked %}selected{% endif %}>Driverless (everywhere): recommended, nothing to install</option>
@@ -241,6 +243,27 @@
       sel.addEventListener('change', sync);
       if (!box.hidden) sync();
     })();
+
+    // "everywhere" only works when the printer answers IPP, so it follows the Device URI:
+    // offered (and picked, unless another driver was chosen) for ipp://, ipps:// and
+    // dnssd://…_ipp… addresses; greyed out with the reason for anything else.
+    window.hubSyncEverywhere = (function () {
+      var sel = document.getElementById('model'), uri = document.getElementById('uri');
+      var ev = sel.querySelector('option[value=everywhere]'), none = sel.querySelector('option[value=""]');
+      function update() {
+        var u = uri.value.trim().toLowerCase();
+        var ok = /^ipps?:\/\//.test(u) || (/^dnssd:\/\//.test(u) && u.indexOf('._ipp') !== -1);
+        ev.disabled = !ok;
+        ev.textContent = ok ? 'Driverless (everywhere): recommended, nothing to install'
+                       : u ? 'Driverless (everywhere): not available for this address'
+                           : 'Driverless (everywhere): enter or pick an ipp:// address first';
+        if (ok && sel.value === '') ev.selected = true;          // nothing chosen yet: use it
+        if (!ok && sel.value === 'everywhere') none.selected = true;
+      }
+      uri.addEventListener('input', update);
+      update();
+      return update;
+    })();
     </script>
 
     <div class="checks"><label><input type="checkbox" name="default" value="1"> Make this the default printer</label></div>
@@ -262,13 +285,11 @@
       ['name', 'desc', 'location', 'uri', 'driver-q'].forEach(function (id) { document.getElementById(id).value = ''; });
       f.querySelector('input[name=default]').checked = false;
       var sel = document.getElementById('model');
-      Array.prototype.slice.call(sel.querySelectorAll('optgroup.for-picked, option[value=""]')).forEach(function (el) { el.remove(); });
+      Array.prototype.slice.call(sel.querySelectorAll('optgroup.for-picked')).forEach(function (el) { el.remove(); });
       var chosen = document.getElementById('model-chosen');
       chosen.innerHTML = ''; chosen.hidden = true;
-      var ev = sel.querySelector('option[value=everywhere]');
-      ev.disabled = false;
-      ev.textContent = 'Driverless (everywhere): recommended, nothing to install';
-      ev.selected = true;
+      sel.querySelector('option[value=""]').selected = true;
+      window.hubSyncEverywhere();                // empty address: everywhere greyed out until one is entered
       document.getElementById('driver-results').innerHTML = '';
       document.getElementById('driver-status').textContent = '';
       sel.dispatchEvent(new Event('change'));
