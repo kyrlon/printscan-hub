@@ -1,7 +1,22 @@
-# PrintScan Hub
+<p align="center">
+  <img src="hub/portal/static/icon.svg" alt="PrintScan Hub" width="80" />
+</p>
+<h1 align="center">PrintScan Hub</h1>
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-1a1a1a?style=for-the-badge" alt="MIT License" /></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Docker_Compose-1a1a1a?style=for-the-badge&logo=docker&logoColor=white" alt="Runs with Docker Compose" /></a>
+  <a href="#tested-hardware"><img src="https://img.shields.io/badge/Tested_hardware-1a1a1a?style=for-the-badge" alt="Tested hardware" /></a>
+</p>
+<p align="center">
+  <strong>One box on your network that holds all the printer and scanner drivers,</strong><br>
+  so other computers don't have to install anything.
+</p>
 
-One box on your network that holds all the printer and scanner drivers, so other
-computers don't have to install anything.
+<p align="center">
+  <img src="docs/home.png" alt="PrintScan Hub home page with big Print and Scan buttons and printer status" width="800" />
+</p>
+
+---
 
 | What | Where | Who |
 |---|---|---|
@@ -384,6 +399,7 @@ anything you had to change.
 | `docker-compose.desktop.yml` | Override for Docker Desktop (port mapping instead of host networking) |
 | `shared/hub-driver` | The driver installer used by both images |
 | `scripts/linux-host.sh` | Linux host helper: status, prepare/restore host CUPS, install Docker |
+| `docs/` | Images used in this README |
 
 `hub/cupsd.conf` is only the default. After the first start, edit `data/cups/cupsd.conf` and
 `docker compose restart hub`.
