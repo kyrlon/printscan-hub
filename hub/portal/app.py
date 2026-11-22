@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from pathlib import Path
 
@@ -428,7 +429,10 @@ def scanner_identity(url):
 
 
 def _base_name(name):
-    return re.sub(r"\s*\((?:usb|network|wi-?fi)\)\s*$", "", name or "", flags=re.I).strip().lower()
+    """'Brother_MFC-L3780CDW' and 'Brother MFC-L3780CDW series (USB)' -> 'brother mfc-l3780cdw'."""
+    n = re.sub(r"\s*\((?:usb|network|wi-?fi)\)\s*$", "", name or "", flags=re.I)
+    n = re.sub(r"\s*\[[0-9A-Fa-f]{6}\]", "", n).replace("_", " ")
+    return re.sub(r"\s+series$", "", n.strip(), flags=re.I).lower()
 
 
 def detected_scanners():
@@ -551,8 +555,8 @@ def device_serial(uri, device_id, by):
     return None
 
 
-def list_scanners():
-    """Scanners configured in .env (AIRSCAN_DEVICES), with their device web pages."""
+def _env_scanners():
+    """Scanners listed in .env (AIRSCAN_DEVICES): the fallback before anything is detected."""
     raw = os.environ.get("AIRSCAN_DEVICES", "")
     out = []
     for entry in re.split(re.escape(os.environ.get("DELIMITER", ";")) + r"|\n", raw):
@@ -561,10 +565,65 @@ def list_scanners():
         if not name.strip() or not url:
             continue
         host, _ = device_host_port(url)
-        out.append({"name": name.strip().strip('"').replace("_", " "),
+        out.append({"name": name.strip().strip('"').replace("_", " "), "url": url,
                     "web": f"http://{host}/" if host else None})
     return out
 
+
+_scan_state_cache = {}
+SCAN_STATE_TTL = 15
+
+
+def scanner_state(url):
+    """Live state from the scanner itself (eSCL ScannerStatus), cached briefly.
+    Returns (label, css class): ready / busy / needs attention / offline, or
+    ("detected", "") when there's no eSCL address to ask (WSD-only, USB backends)."""
+    if not url:
+        return "detected", ""
+    hit = _scan_state_cache.get(url)
+    if hit and time.time() - hit[0] < SCAN_STATE_TTL:
+        return hit[1]
+    try:
+        r = requests.get(url.rstrip("/") + "/ScannerStatus", timeout=2.5)
+        m = re.search(r"<(?:\w+:)?State>\s*(\w+)\s*</", r.text) if r.ok else None
+        state = (m.group(1) if m else "").lower()
+        result = {"idle": ("ready", "idle"), "processing": ("busy", "processing"),
+                  "testing": ("busy", "processing")}.get(state, ("needs attention", "stopped") if state
+                                                        else ("not responding", "stopped"))
+    except requests.RequestException:
+        result = ("offline", "stopped")
+    _scan_state_cache[url] = (time.time(), result)
+    return result
+
+
+def list_scanners():
+    """Scanners for the Home and Print pages: what the scan app detected (the same
+    list as Admin -> Scanners, minus hidden ones), else AIRSCAN_DEVICES from .env.
+    One row per physical scanner, each with its live state."""
+    detected, _ = detected_scanners()
+    if detected:
+        rows, seen = [], {}
+        for s in detected:
+            if s["hidden"]:
+                continue
+            row = {"name": re.sub(r"\s*\[[0-9A-Fa-f]{6}\]", "", s.get("name") or s.get("id", "")).replace("_", " ").strip(),
+                   "url": s.get("url"), "web": s.get("web")}
+            key = (("uuid", s["uuid"].lower()) if s.get("uuid") else
+                   ("serial", s["serial"]) if s.get("serial") else ("name", _base_name(row["name"])))
+            if key in seen:                  # same scanner found twice (eSCL + WSD, USB + Wi-Fi)
+                prev = seen[key]
+                if not prev["url"] and row["url"]:
+                    prev.update(row)         # keep the one we can ask for its status
+                continue
+            seen[key] = row
+            rows.append(row)
+    else:
+        rows = _env_scanners()
+    if rows:
+        with ThreadPoolExecutor(max_workers=min(8, len(rows))) as pool:
+            for row, (label, cls) in zip(rows, pool.map(lambda r: scanner_state(r["url"]), rows)):
+                row["state"], row["state_class"] = label, cls
+    return rows
 
 DISABLED_REASON = "Disabled by admin"
 CUPS_PRINTER_REJECTING = cups.CUPS_PRINTER_REJECTING   # 0x80000, a bit in printer-type

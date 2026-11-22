@@ -269,6 +269,11 @@ Whether network scanners are found automatically depends on the host:
 | Docker Desktop | ❌ list them yourself | Announcements don't reach Docker's VM: add `AIRSCAN_DEVICES` to `.env` |
 
 Scanners listed in `AIRSCAN_DEVICES`, `SANED_NET_HOSTS` or `PIXMA_HOSTS` are always included.
+
+The Home and Print pages list the same scanners as **Admin → Scanners** (minus hidden ones, and one row per
+physical scanner), with each scanner's live state: *ready*, *busy*, *offline* or *needs attention*, asked from the
+scanner itself every 15 seconds at most. Scanners found only through WSD or a USB backend show *detected*: they
+don't report a status. Until the scan app has reported anything, these pages fall back to `AIRSCAN_DEVICES`.
 In a name like `airscan:e1:…`, `e` means eSCL (`w` = WSD) and the number is just its position.
 
 ### What happens on Scan now
