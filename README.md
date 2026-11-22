@@ -94,9 +94,10 @@ cp .env.example .env                   # set ADMIN_PASSWORD and HUB_ADDRESS (thi
 docker compose up -d --build
 ```
 
-Then open `http://<server>/admin`, click **Scan network & USB for printers**, pick the
-printer, leave the driver as `everywhere` (works for most network printers from
-the last ~10 years), and click **Add printer**.
+Then open `http://<server>/admin`, click **Scan network & USB for printers**, and press **Add** next to your
+printer. Pick its `ipp://` (or *driverless*) entry if it's listed: the driver is then `everywhere`, nothing to
+install (works for most printers from the last ~10 years). Click **Add printer**. If the scan only shows an
+`lpd://` or `socket://` entry, see [everywhere greyed out?](#everywhere-greyed-out).
 
 ### On Fedora, RHEL, Arch or another non-Debian host
 
@@ -185,7 +186,8 @@ The warning goes away once the container can see a USB bus.
 ### Do you need a driver? Usually not: the `everywhere` driver
 
 `everywhere` is CUPS's built-in driver for **IPP Everywhere**, the standard that lets a computer print
-without a model-specific driver. It's the default when you add a printer. How it works:
+without a model-specific driver. The Add printer form offers it, and picks it, whenever the printer's address is an
+IPP one. How it works:
 
 1. When you add the printer, CUPS asks it over IPP what it can do: paper sizes, trays, two-sided,
    color, resolutions and the file formats it accepts.
@@ -206,6 +208,19 @@ being phased out.
   some finishing options) may need the vendor driver.
 - Printers from before about 2013 usually don't support it.
 
+#### everywhere greyed out?
+
+The Driver list only offers `everywhere` for an `ipp://`, `ipps://` or `dnssd://…_ipp…` address, so it's greyed out
+while **Device URI** is empty or holds an `lpd://`, `socket://` or `usb://` address. Common case: the host has no
+Avahi, so the printer scan only finds the printer's `lpd://` address. Either:
+
+- **Type the printer's IPP address** into Device URI: `ipp://<printer-ip>/ipp/print` works for most printers from
+  the last ~10 years, and `everywhere` becomes available. Or install Avahi (`scripts/linux-host.sh prepare --avahi`),
+  restart the hub and scan again, so the IPP entry is listed.
+- **No IPP at all** (older printers): pick a driver for the model in the Driver list (*Search installed drivers…*).
+  **If none is installed for your model, install one first**: see [Finding and installing a driver](#finding-and-installing-a-driver),
+  then come back and search again.
+
 **Use a vendor driver instead** for an older printer, a non-IPP connection, or a printer that prints
 wrongly with `everywhere` (bad margins, a missing feature you need).
 
@@ -219,7 +234,8 @@ If your printer isn't covered, there are three ways to add a driver. All three a
 **remembered in `drivers/printer/` and re-installed automatically** whenever the
 container is rebuilt or updated:
 
-1. **Web upload**: Admin → Drivers → upload a vendor `.deb`, a `.ppd`/`.ppd.gz`, or a `.sh` install script.
+1. **Web upload**: Admin → Drivers → *Upload the printer maker's driver*: a vendor `.deb`, a `.ppd`/`.ppd.gz`, or a `.sh`
+   install script.
 2. **Debian package**: Admin → Drivers → *Find an open-source driver*, type the make and model, then click
    **Install** next to a matching package marked *not installed*. If you already know the name (e.g.
    `printer-driver-brlaser`), use *Already know the Debian package name?* under it: it looks the names up first and
@@ -252,7 +268,9 @@ Notes:
   Canon and Epson downloads) can't run. The hub refuses them with a message instead of installing a
   driver that would fail on every job. Use `everywhere` or the open-source drivers
   (`printer-driver-*`, `hplip`) there.
-- Each install is logged to `drivers/printer/install.log`, which you can also read on the admin page.
+- Search results and install results appear right in the Drivers section (full output folded underneath). Each
+  install is logged to `drivers/printer/install.log`: read it under **Install log** on the admin page, or via
+  *Open install log in new tab* after an install.
 
 ### Scanner drivers
 
