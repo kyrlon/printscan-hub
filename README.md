@@ -417,7 +417,7 @@ Set `AVAHI=off` to turn discovery off.
 
 | Printer | Connection | Driver | Print from portal | Driverless clients (IPP) | Toner / status | Notes |
 |---|---|---|---|---|---|---|
-| Brother MFC-L3780CDW | Network (Wi-Fi/Ethernet) | `everywhere` (no driver) | ✅ text, Word (.docx), test page | ➖ | ✅ live CMYK levels | Added by IP address on Docker Desktop |
+| Brother MFC-L3780CDW | Network (Wi-Fi/Ethernet) | `everywhere` (no driver) | ✅ text, Word (.docx), test page | ➖ | ✅ live CMYK levels | Added by IP address on Docker Desktop. On the Raspberry Pi 2: auto-discovered and added by its `.local` name, test page ✅ (about 40 s from Print to done) |
 | HP ENVY Photo 7100 | USB, via `ipp-usb` on a Debian 13 host | `everywhere` (no driver), URI `ipp://localhost:60000/ipp/print` | ✅ test page (Print page button) | ➖ | ✅ tri-color + black ink; "Photo tray empty" shown per tray | Also on Wi-Fi; no Settings link when reached over USB. One early test page was reported "completed" by the printer but never came out, right as it flagged its empty photo tray |
 
 ### Scanners
@@ -425,7 +425,7 @@ Set `AVAHI=off` to turn discovery off.
 | Scanner | Connection | Backend | Browser scan | Scan from printer to hub folder (FTP) | Notes |
 |---|---|---|---|---|---|
 | HP ENVY Photo 7100 | USB via `ipp-usb`, and network | `sane-airscan` (eSCL, no driver) | ➖ (detected, Flatbed only) | ➖ | Auto-discovered on a Linux host, both as "(USB)" and over Wi-Fi |
-| Brother MFC-L3780CDW | Network | `sane-airscan` (eSCL, no driver) | ✅ flatbed | ➖ | Reports Flatbed, ADF, ADF Duplex at 100–600 dpi. Feeder detection ✅ (auto-selects ADF when loaded); scanning through the ADF not tried yet. Needs `AIRSCAN_DEVICES` on Docker Desktop |
+| Brother MFC-L3780CDW | Network | `sane-airscan` (eSCL, no driver) | ✅ flatbed | ➖ | Reports Flatbed, ADF, ADF Duplex at 100–600 dpi. Feeder detection ✅ (auto-selects ADF when loaded); scanning through the ADF not tried yet. Needs `AIRSCAN_DEVICES` on Docker Desktop; found automatically on the Raspberry Pi 2 (eSCL and WSD, shown once) |
 
 ### Hosts
 
@@ -433,6 +433,7 @@ Set `AVAHI=off` to turn discovery off.
 |---|---|---|---|---|
 | Windows 11 + Docker Desktop (WSL2) | ✅ | ❌ | ❌ | Use `docker-compose.desktop.yml`; add printers/scanners by IP |
 | Debian 13 (trixie), amd64 | ✅ | ✅ via `ipp-usb` | ✅ scanners found automatically | Run `scripts/linux-host.sh prepare` first (stops the host's CUPS) |
+| Raspberry Pi 2 (armv7l / armhf), DietPi on Debian 13 | ✅ | ➖ | ✅ printers and scanners found automatically | DietPi has no Avahi: let `prepare` install it. Slow but fine: the first build takes a while, and the scanner list is ready about 30 s after start. Vendor `.deb` drivers built for amd64/i386 can't run here |
 
 Tried a device? Add a row, including failures. Note the connection, driver/backend and
 anything you had to change.
