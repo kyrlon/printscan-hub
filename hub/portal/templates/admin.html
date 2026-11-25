@@ -450,7 +450,7 @@
     <tr><th>Scanner</th><th>Connection</th><th>Can scan from</th><th>Scan page</th><th></th></tr>
     {% for s in scanners %}
     <tr {% if s.hidden %}style="opacity:.55"{% endif %}>
-      <td><strong>{{ s.name }}</strong>
+      <td><strong>{{ s.name }}</strong>{% if s.state and not s.hidden %} <span class="pill {{ s.state_class }}" title="{{ s.state_title }}">{{ s.state }}</span>{% endif %}
           {% if s.serial or s.mac_tag %}<br><span class="muted small">
             {%- if s.serial %}Serial {{ s.serial }}{% endif %}
             {%- if s.serial and s.mac_tag %} · {% endif %}

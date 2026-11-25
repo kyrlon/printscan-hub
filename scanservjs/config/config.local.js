@@ -71,17 +71,41 @@ const esclUrls = {};
   const m = entry.match(/^\s*"?([^"=]+?)"?\s*=\s*([^,\s]+)\s*,\s*escl/i);
   if (m) esclUrls[m[1].trim()] = m[2];
 });
+// Every scanner address ever found on the network (eSCL and WSD), so the hub can
+// tell whether a scanner is still there even when it only speaks WSD and has no
+// status page. Written to scanners-seen.json after each search.
+const seenUrls = {};
+// IPv4 http first: IPv6 link-local addresses can't be used from another host.
+const urlRank = u => (/^http:\/\/\d/.test(u) ? 0 : /^http:/.test(u) ? 1 : 2);
 function discover() {
-  // Lists 'Name = http://host/eSCL/, eSCL' (name may or may not be quoted).
+  // Lists 'Name = http://host/eSCL/, eSCL' or '..., WSD' (name may or may not be quoted).
   execFile('airscan-discover', { timeout: 20000 }, (err, stdout) => {
+    if (err && !stdout) return;                // search didn't run: keep the last answer
+    const now = {};
     (stdout || '').split('\n').forEach(line => {
-      const m = line.match(/^\s*"?(.+?)"?\s*=\s*(\S+?)\s*,\s*escl\s*$/i);
-      if (m && !esclUrls[m[1]]) esclUrls[m[1]] = m[2];
+      const m = line.match(/^\s*"?(.+?)"?\s*=\s*(\S+?)\s*,\s*(escl|wsd)\s*$/i);
+      if (!m) return;
+      const [, name, url, proto] = m, kind = proto.toLowerCase();
+      if (kind === 'escl' && !esclUrls[name]) esclUrls[name] = url;
+      const e = (now[name] = now[name] || {});
+      if (!e[kind] || urlRank(url) < urlRank(e[kind])) e[kind] = url;
     });
+    Object.keys(seenUrls).forEach(n => { seenUrls[n].seen = false; });
+    Object.entries(now).forEach(([n, e]) => { seenUrls[n] = { ...seenUrls[n], ...e, seen: true }; });
+    try {
+      fs.mkdirSync(SHARED, { recursive: true });
+      fs.writeFileSync(`${SHARED}/scanners-seen.json.tmp`,
+                       JSON.stringify({ updated: new Date().toISOString(), devices: seenUrls }, null, 1));
+      fs.renameSync(`${SHARED}/scanners-seen.json.tmp`, `${SHARED}/scanners-seen.json`);
+    } catch (e) {
+      console.warn(`Couldn't write ${SHARED}/scanners-seen.json: ${e.message}`);
+    }
   });
 }
 discover();
-setInterval(discover, 10 * 60 * 1000).unref();
+// Often enough that a scanner switched off shows as such within a few minutes;
+// a search takes about 5 s even on a Raspberry Pi.
+setInterval(discover, 2 * 60 * 1000).unref();
 
 // Ask the scanner whether paper is in the feeder. Synchronous (afterDevices is),
 // with a short timeout so an offline scanner can't stall the page.

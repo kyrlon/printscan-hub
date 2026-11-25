@@ -632,6 +632,65 @@ def _env_scanners():
 
 _scan_state_cache = {}
 SCAN_STATE_TTL = 15
+SEEN_FRESH = 10 * 60        # the scanner container searches the network every 2 minutes
+
+
+def scanners_seen():
+    """What the scanner container's last network search found: {base name: entry},
+    entry = {"escl": url, "wsd": url, "seen": bool}. None if there's no recent search."""
+    try:
+        path = SHARED_DIR / "scanners-seen.json"
+        if time.time() - path.stat().st_mtime > SEEN_FRESH:
+            return None
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    out = {}
+    for name, e in (data.get("devices") or {}).items():
+        key = _base_name(name) + (" (usb)" if re.search(r"\(usb\)\s*$", name, re.I) else "")
+        if e.get("seen") or key not in out:
+            out[key] = e
+    return out
+
+
+def _seen_entry(name, seen):
+    if seen is None:
+        return None
+    key = _base_name(name) + (" (usb)" if re.search(r"\(usb\)\s*$", name or "", re.I) else "")
+    return seen.get(key, {"seen": False})
+
+
+def _reachable(url):
+    """Does anything answer at this http(s) address's host and port? (cached briefly)"""
+    hit = _scan_state_cache.get(("tcp", url))
+    if hit and time.time() - hit[0] < SCAN_STATE_TTL:
+        return hit[1]
+    host, port = device_host_port(url)
+    ok = False
+    if host:
+        try:
+            socket.create_connection((host.strip("[]"), port), timeout=2).close()
+            ok = True
+        except OSError:
+            pass
+    _scan_state_cache[("tcp", url)] = (time.time(), ok)
+    return ok
+
+
+def scanner_status(row, seen):
+    """(label, css class) for a scanner row: its own eSCL status when it has one,
+    else whether it's on the network at all (WSD-only scanners have no status page)."""
+    entry = _seen_entry(row.get("name"), seen)
+    url = row.get("url") or (entry or {}).get("escl")
+    if url:
+        return scanner_state(url)
+    if entry is None:
+        return "detected", ""                # no recent network search to go by
+    if entry.get("wsd"):
+        return ("available", "idle") if _reachable(entry["wsd"]) else ("offline", "stopped")
+    if (row.get("id") or "airscan").split(":")[0] != "airscan":
+        return "detected", ""                # USB / other drivers: not on the network
+    return "offline", "stopped"
 
 
 def scanner_state(url):
@@ -666,7 +725,7 @@ def list_scanners():
         rows, seen = [], {}
         for s, (_, gid) in zip(visible, same_device_groups(visible)):
             row = {"name": re.sub(r"\s*\[[0-9A-Fa-f]{6}\]", "", s.get("name") or s.get("id", "")).replace("_", " ").strip(),
-                   "url": s.get("url"), "web": s.get("web")}
+                   "url": s.get("url"), "web": s.get("web"), "id": s.get("id")}
             if gid in seen:                  # same scanner found twice (eSCL + WSD, USB + Wi-Fi)
                 prev = seen[gid]
                 if not prev["url"] and row["url"]:
@@ -676,11 +735,22 @@ def list_scanners():
             rows.append(row)
     else:
         rows = _env_scanners()
-    if rows:
-        with ThreadPoolExecutor(max_workers=min(8, len(rows))) as pool:
-            for row, (label, cls) in zip(rows, pool.map(lambda r: scanner_state(r["url"]), rows)):
-                row["state"], row["state_class"] = label, cls
+    add_scanner_states(rows)
     return rows
+
+
+def add_scanner_states(rows):
+    """Set state / state_class / state_title on each scanner row, checked in parallel."""
+    if not rows:
+        return
+    seen = scanners_seen()
+    titles = {"available": "Found on the network just now. This scanner doesn't report more than that",
+              "offline": "Not found on the network: switched off, unplugged or asleep?",
+              "detected": "Found by the scan app; this scanner doesn't report its status"}
+    with ThreadPoolExecutor(max_workers=min(8, len(rows))) as pool:
+        for row, (label, cls) in zip(rows, pool.map(lambda r: scanner_status(r, seen), rows)):
+            row["state"], row["state_class"] = label, cls
+            row["state_title"] = titles.get(label, "As reported by the scanner just now")
 
 DISABLED_REASON = "Disabled by admin"
 CUPS_PRINTER_REJECTING = cups.CUPS_PRINTER_REJECTING   # 0x80000, a bit in printer-type
@@ -1184,6 +1254,7 @@ def admin():
     # Mark devices that already have a queue; the scan list hides them unless ?all=1.
     devices_added = []
     scanners, scanners_updated = detected_scanners()
+    add_scanner_states(scanners)
     if devices:
         serials = serial_lookup(scanners)
         for d in devices:

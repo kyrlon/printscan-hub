@@ -96,7 +96,7 @@
     {% for s in scanners %}
     <tr>
       <td><strong>{{ s.name }}</strong> <span class="pill {{ s.state_class }}"
-          title="{% if s.state_class %}As reported by the scanner just now{% else %}Found by the scan app; this scanner doesn't report its status{% endif %}">{{ s.state }}</span></td>
+          title="{{ s.state_title }}">{{ s.state }}</span></td>
       <td style="text-align:right"><div class="actions" style="justify-content:flex-end;align-items:center">
         {{ device_link(s.web) }}
         <a class="btn secondary" style="padding:3px 12px;font-size:13px" href="{{ url_for('scan') }}">Scan</a>
