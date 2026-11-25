@@ -57,7 +57,7 @@
     box.className = d.feeder;
     box.title = 'Checked every few seconds. ' + (auto
       ? 'Source is set automatically when the page loads (SCAN_DEFAULT_SOURCE=' + d.mode + ').'
-      : 'Choose the feeder (ADF) under Source to use it.');
+      : 'Choose a Feeder option under Source to use it.');
     var text = loaded ? 'Paper in the feeder' : 'Feeder empty';
     if (auto) text += loaded ? ': starts from the feeder' : ': starts from the glass';
     box.innerHTML = '<span class="dot"></span><span class="txt"></span>';

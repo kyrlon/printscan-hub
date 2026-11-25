@@ -18,8 +18,10 @@ RUN sed -i -E 's/("btn-scan":[^,]*\(\[)(["`])Scan\2\]/\1\2Scan now\2]/g' /usr/li
 
 # Let a hub-chosen default Source (SCAN_DEFAULT_SOURCE, e.g. "auto" = feeder when
 # it has paper) win over the source the browser remembered from last time.
+# Also ignore a remembered source the scanner no longer lists (e.g. "ADF Duplex"
+# from before the hub renamed the choices), which the server would reject.
 # Original: this.params.source = saved.params.source || device.features["--source"].default
-RUN sed -i 's/this\.params\.source=\([A-Za-z_$]*\)\.params\.source||\([A-Za-z_$]*\)\.features\["--source"\]\.default/this.params.source=(\2.features["--source"].hubForceDefault?null:\1.params.source)||\2.features["--source"].default/' /usr/lib/scanservjs/client/assets/index-*.js \
+RUN sed -i 's/this\.params\.source=\([A-Za-z_$]*\)\.params\.source||\([A-Za-z_$]*\)\.features\["--source"\]\.default/this.params.source=(\2.features["--source"].hubForceDefault||!\2.features["--source"].options.includes(\1.params.source)?null:\1.params.source)||\2.features["--source"].default/' /usr/lib/scanservjs/client/assets/index-*.js \
     && grep -q 'hubForceDefault' /usr/lib/scanservjs/client/assets/index-*.js
 
 # Use sane-airscan only for driverless scanners: SANE's older built-in "escl"
@@ -40,8 +42,11 @@ RUN sed -i -E 's#<link rel="(icon|shortcut icon|apple-touch-icon)"[^>]*>##g; s#<
     && grep -q 'hub-icon.svg' /usr/lib/scanservjs/client/index.html
 
 COPY shared/hub-driver /usr/local/bin/hub-driver
+# Runs around each scan (whole feeder stack, short-edge flip, review thumbnails);
+# config.local.js calls it.
+COPY scanner/hub-scan-pass /usr/local/bin/hub-scan-pass
 COPY scanner/entrypoint-wrapper.sh /entrypoint-wrapper.sh
-RUN sed -i 's/\r$//' /usr/local/bin/hub-driver /entrypoint-wrapper.sh \
-    && chmod +x /usr/local/bin/hub-driver /entrypoint-wrapper.sh
+RUN sed -i 's/\r$//' /usr/local/bin/hub-driver /usr/local/bin/hub-scan-pass /entrypoint-wrapper.sh \
+    && chmod +x /usr/local/bin/hub-driver /usr/local/bin/hub-scan-pass /entrypoint-wrapper.sh
 
 ENTRYPOINT ["/entrypoint-wrapper.sh"]

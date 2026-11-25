@@ -56,7 +56,7 @@ New to printer and scanner jargon (ADF, IPP, eSCL, PPD…)? See [Help: terms exp
 | Container | Base image | What runs inside |
 |---|---|---|
 | **hub** (`printscan-hub`) | Debian 12 (bookworm-slim) | **CUPS** print server and its drivers, the **web portal** (Python/Flask, served by gunicorn, talks to CUPS via pycups), **LibreOffice** to turn Office files into PDF, **Avahi** for printer discovery, the `hub-driver` installer, and the gateway to the scan page that keeps private scans private (SQLite, in `data/portal/`) |
-| **scanner** (`printscan-scanner`) | [`sbs20/scanservjs`](https://hub.docker.com/r/sbs20/scanservjs) | **scanservjs** web scanning app on top of **SANE** and **sane-airscan**, plus the hub's additions: driver installer, feeder detection, Letter default, tooltips (press and hold on touch screens), "Scan now" label |
+| **scanner** (`printscan-scanner`) | [`sbs20/scanservjs`](https://hub.docker.com/r/sbs20/scanservjs) | **scanservjs** web scanning app on top of **SANE** and **sane-airscan**, plus the hub's additions: driver installer, feeder detection, whole-stack feeder scans, 2-sided (long/short edge), page review before saving, Letter default, tooltips (press and hold on touch screens), "Scan now" label |
 | **inbox** (`printscan-inbox`) | Alpine 3.20 | **vsftpd** FTP server (and **Samba** on Linux hosts) that saves the printer's own scans into `scans/` |
 
 The scan app isn't reachable on its own port. The portal serves it at `/scan/app/` and shows it inside its **Scan** tab,
@@ -329,7 +329,8 @@ In a name like `airscan:e1:…`, `e` means eSCL (`w` = WSD) and the number is ju
 
 **Preview** is a quick low-resolution scan that isn't saved; drag the box on it to set the scan area.
 
-The hub's additions (Letter default, automatic Source, the feeder status under *Device*) run in
+The hub's additions (Letter default, automatic Source, the feeder status under *Device*, the renamed
+Source choices) run in
 scanservjs' settings hook (`scanservjs/config/config.local.js`) on **every** page load, not only after a
 search. The feeder state comes from the scanner itself (`/eSCL/ScannerStatus`), so it updates
 without pressing ↻. The answer is reused for up to 15 seconds, and while a scan is running, so
@@ -337,10 +338,34 @@ reloading the page doesn't keep asking a busy scanner.
 
 ## Glass or document feeder?
 
-The **Source** list on the Scan page comes from each scanner, so it differs by device:
-flatbed-only models show just *Flatbed*, and models with a feeder add *ADF*, *ADF Duplex*,
-*ADF Front/Back* or similar. Hover over any setting for a short description; on a phone or tablet, press and hold it. This works
-throughout the portal too.
+The **Source** list on the Scan page comes from each scanner, so it differs by device. The hub
+renames the usual ones the way a printer maker's app would:
+
+| Source | Scanner's own name | What you get |
+|---|---|---|
+| **Glass (flatbed)** | Flatbed | One page from the glass |
+| **Feeder, 1-sided** | ADF | Every page in the feeder, front sides |
+| **Feeder, 2-sided (flip on long edge)** | ADF Duplex | Both sides of every page, for pages that turn like a book |
+| **Feeder, 2-sided (flip on short edge)** | ADF Duplex | Same, for pages that turn like a notepad (bound at the top): the back pages are turned the right way up |
+
+The 2-sided choices only appear when the scanner's feeder scans both sides itself (the Brother
+MFC-L3780CDW does). With a 1-sided feeder, use the **Batch** option *Auto (Collate 1, 3… 4, 2)*: scan the fronts, turn the
+stack over, scan the backs, and the pages are put in order. A scanner that lists several feeders
+(left-aligned, centred…) keeps its own names. Hover over any setting for a short description; on a
+phone or tablet, press and hold it. This works throughout the portal too.
+
+The feeder always scans every page you load, whatever **Batch** says. (Plain scanservjs scans only
+the first sheet unless Batch is *Auto*.)
+
+### Check the pages before saving
+
+Set **Batch → Manual**. After each scan a window shows every page scanned so far:
+
+- **Next** adds more pages: put the next page on the glass, or reload the feeder (you can switch Source in between)
+- **Rescan** redoes the last scan (its pages are replaced, not added)
+- **Finish** saves everything as one file
+
+With any other Batch setting the file is saved straight away. You can still open or delete it under **Files**.
 
 `SCAN_DEFAULT_SOURCE` in `.env` sets where scans start:
 
@@ -488,10 +513,10 @@ The first start after a rebuild takes longer while the drivers install.
 | Term | What it means |
 |---|---|
 | **ADF** (Automatic Document Feeder) | The tray on top of many printers that pulls a stack of pages through one at a time. Load pages face up. Shown as *ADF* in the Source list |
-| **Batch** | Putting several scanned pages into one file. *Manual* asks before each page (use it on the glass); *Auto* keeps going (use it with the feeder) |
+| **Batch** | Putting several scanned pages into one file. *Manual* shows the pages after each scan so you can add more, redo the last scan or save; *Auto (Collate…)* pairs fronts and backs from a 1-sided feeder. The feeder always scans the whole stack |
 | **Color / Gray / Lineart** | Scan modes. *Gray* is shades of gray (fine for black-and-white photos); *Lineart* is pure black and white with the smallest files, good for text |
 | **DPI** (dots per inch) | How much detail a scan captures. 200–300 dpi for documents, 600 for photos. Doubling the dpi makes files about four times bigger |
-| **Duplex** | Both sides of each page. *ADF Duplex* scans front and back in one pass |
+| **Duplex** | Both sides of each page. *Feeder, 2-sided* (the scanner's *ADF Duplex*) scans front and back in one pass |
 | **eSCL / AirScan** | The standard, driver-free way modern network scanners talk to computers (Apple calls it AirScan). The hub uses it to scan and to check whether the feeder has paper |
 | **Flatbed / Platen** | The glass under the scanner lid. One page at a time; best for photos, books and fragile pages |
 | **Preview** | A quick low-resolution scan for checking the page and dragging the box to choose the scan area. It doesn't save a file |

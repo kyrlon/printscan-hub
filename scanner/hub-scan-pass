@@ -1,0 +1,57 @@
+#!/bin/bash
+# PrintScan Hub: runs around each scanimage call that scanservjs makes, set up by
+# config.local.js. scanservjs' temp files are ~tmp-scan-<pass>-NNNN.tif (from
+# --batch) or ~tmp-scan-0-NNNN.tif (one page per pass); it turns every *.tif left
+# in the folder into the final file, sorted by name.
+#
+#   hub-scan-pass pre  DIR PASS                  clear what an earlier try of this pass left
+#   hub-scan-pass post DIR PASS KIND FLIP REVIEW
+#     KIND   batch   the feeder scanned the whole stack into ~tmp-scan-PASS-NNNN.tif
+#            single  one page, already at ~tmp-scan-0-PASS.tif (glass)
+#     FLIP   short   turn every second page over (2-sided, flip on short edge)
+#     REVIEW 1       manual batch: move the pages to ~tmp-scan-0-PASS.tif(.pNNNN.tif)
+#                    and draw thumbnails of every page so far for the review dialog
+set -u
+export LC_ALL=C
+step=$1 dir=$2 pass=$3
+cd "$dir" || exit 1
+n=$(printf %04d "$pass")
+first="~tmp-scan-0-$n.tif"
+
+if [ "$step" = pre ]; then
+  rm -f -- "$first" "$first".* "~tmp-scan-0-$n.review.png" ./~tmp-scan-"$pass"-*.tif
+  exit 0
+fi
+
+kind=$4 flip=$5 review=$6
+shopt -s nullglob
+
+if [ "$kind" = batch ]; then
+  pages=(./~tmp-scan-"$pass"-*.tif)
+  [ ${#pages[@]} -gt 0 ] || { echo "hub-scan-pass: the scanner returned no pages" >&2; exit 1; }
+  if [ "$flip" = short ]; then
+    # The scanner returns back sides as if the sheet were turned on its long edge.
+    for ((i = 1; i < ${#pages[@]}; i += 2)); do mogrify -rotate 180 "${pages[$i]}" || exit 1; done
+  fi
+  if [ "$review" = 1 ]; then
+    # (./ in globs: a leading ~ would be read as a home directory.)
+    # Manual batch reads ~tmp-scan-0-PASS.tif after each pass; keep the rest right after it.
+    mv -f -- "${pages[0]}" "$first"
+    for p in "${pages[@]:1}"; do
+      num=${p##*-}; mv -f -- "$p" "$first.p${num%.tif}.tif"
+    done
+  fi
+fi
+
+if [ "$review" = 1 ]; then
+  thumbs=()
+  for f in ./~tmp-scan-0-*.tif; do
+    [ -e "$f.thumb.png" ] || convert "$f[0]" -thumbnail 300x300 -background white -flatten \
+        -bordercolor '#9e9e9e' -border 1 "$f.thumb.png" 2>/dev/null
+    [ -e "$f.thumb.png" ] && thumbs+=("$f.thumb.png")
+  done
+  cols=$(( ${#thumbs[@]} < 4 ? ${#thumbs[@]} : 4 ))
+  [ ${#thumbs[@]} -gt 0 ] && montage "${thumbs[@]}" -tile "${cols}x" -geometry +8+8 \
+      -background '#e0e0e0' "~tmp-scan-0-$n.review.png" 2>/dev/null
+fi
+exit 0

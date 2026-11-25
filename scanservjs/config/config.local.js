@@ -27,7 +27,7 @@ function writeDetected(devices, hidden) {
     return {
       id: d.id, key: stableKey(d.id), name,
       url: esclUrls[name] || esclUrls[name.replace(/_/g, ' ')] || null,
-      sources: (src && src.options) || [],
+      sources: (src && (src.hubOriginal || src.options)) || [],   // the scanner's own names
       resolutions: (res && res.options) || [],
       feeder: (src && src.hubFeeder) || null,
       hidden: hidden.has(stableKey(d.id)),
@@ -182,6 +182,104 @@ function applySource(device) {
   }
 }
 
+// ---- Source names like a printer's own app ----------------------------------
+// "Flatbed / ADF / ADF Duplex" become "Glass / Feeder, 1-sided / Feeder, 2-sided
+// (flip on long edge | short edge)". The 2-sided choice only appears for scanners
+// whose feeder scans both sides. The scan hook below maps the label back to the
+// scanner's own name. Left alone when a scanner has several of one kind (e.g.
+// left-aligned and centred feeders), where the names carry information.
+const SIDES = {
+  flatbed: 'Glass (flatbed)',
+  adf: 'Feeder, 1-sided',
+  long: 'Feeder, 2-sided (flip on long edge)',
+  short: 'Feeder, 2-sided (flip on short edge)',
+};
+const sourceMap = {};          // device id -> { label: { source, flip } }
+
+function sourceKind(o) {
+  return SOURCE_MATCH.duplex(o) ? 'duplex' : SOURCE_MATCH.flatbed(o) ? 'flatbed'
+       : SOURCE_MATCH.adf(o) ? 'adf' : null;
+}
+
+function friendlySources(device) {
+  const f = device.features['--source'];
+  if (!f || !Array.isArray(f.options)) return;
+  const kinds = f.options.map(sourceKind);
+  if (['flatbed', 'adf', 'duplex'].some(k => kinds.filter(x => x === k).length > 1)) return;
+  const map = {};
+  f.options.forEach((o, i) => {
+    if (kinds[i] === 'duplex') {
+      map[SIDES.long] = { source: o, flip: 'long' };
+      map[SIDES.short] = { source: o, flip: 'short' };
+    } else {
+      map[kinds[i] ? SIDES[kinds[i]] : o] = { source: o, flip: null };
+    }
+  });
+  const label = real => Object.keys(map).find(l => map[l].source === real) || real;
+  f.default = label(f.default);
+  f.hubOriginal = f.options;
+  f.options = Object.keys(map);
+  sourceMap[device.id] = map;
+}
+
+// ---- Around each scan ---------------------------------------------------------
+// scanservjs has no hook before a scan, so wrap the method that builds the
+// scanimage command line. It adds:
+//  - the feeder scans the whole stack, not only its first page: with Batch "None"
+//    scanservjs asks for a single page, which left the rest of the stack unscanned
+//  - 2-sided, flip on short edge: every second page turned the right way up
+//  - Batch "Manual" reviews before saving: each pass shows thumbnails of all pages
+//    so far (Next adds pages, Rescan redoes the last pass, Finish saves), and works
+//    with the feeder (a whole stack per pass)
+// Wrapped in try/catch: if a scanservjs update moves these files, scanning still
+// works, just without the extras.
+try {
+  const serverDir = require('path').dirname(require.main.filename);
+  const ScanimageCommand = require(`${serverDir}/classes/scanimage-command`);
+  const FileInfo = require(`${serverDir}/classes/file-info`);
+  const q = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
+  const scan = ScanimageCommand.prototype.scan;
+
+  ScanimageCommand.prototype.scan = function (request) {
+    const p = request.params || {};
+    const pick = (sourceMap[p.deviceId] || {})[p.source] || { source: p.source, flip: null };
+    const req = Object.assign(Object.create(Object.getPrototypeOf(request)), request,
+                              { params: { ...p, source: pick.source } });
+    if (p.source === undefined) delete req.params.source;
+    if (p.isPreview) return scan.call(this, req);
+
+    const feeder = !!pick.source && sourceKind(pick.source) !== null && sourceKind(pick.source) !== 'flatbed';
+    const manual = req.batch === 'manual';
+    if (!manual && !(feeder && req.batch === 'none')) {
+      return scan.call(this, req);           // collate modes, flatbed without review: as before
+    }
+    const dir = this.config.tempDirectory;
+    const pass = req.index;
+    let kind = 'single';
+    if (feeder) {
+      req.batch = 'auto';                    // scanimage --batch: every page in the feeder
+      kind = 'batch';
+    }
+    const flip = pick.flip === 'short' ? 'short' : 'none';
+    return `hub-scan-pass pre ${q(dir)} ${pass} && ${scan.call(this, req)}` +
+           ` && hub-scan-pass post ${q(dir)} ${pass} ${kind} ${flip} ${manual ? 1 : 0}`;
+  };
+
+  // The review dialog shows the scan of this pass (~tmp-scan-0-NNNN.tif); give it
+  // the thumbnail sheet instead when there is one. It's a .png, so it never ends
+  // up in the saved file (scanservjs only collects the .tif pages).
+  const toBuffer = FileInfo.prototype.toBuffer;
+  FileInfo.prototype.toBuffer = function () {
+    if (/~tmp-scan-0-\d{4}\.tif$/.test(this.fullname)) {
+      const sheet = this.fullname.replace(/\.tif$/, '.review.png');
+      if (fs.existsSync(sheet)) return fs.readFileSync(sheet);
+    }
+    return toBuffer.call(this);
+  };
+} catch (e) {
+  console.warn(`PrintScan Hub scan extras are off (${e.message})`);
+}
+
 // The Scan page's device list shows device.name, which scanservjs sets to the
 // raw SANE id ("airscan:e1:Brother ..."). Scanning uses device.id, so name is
 // free to be a readable label: drop the backend/index prefix and HP's [MAC] tag,
@@ -234,6 +332,7 @@ module.exports = {
         });
       }
       applySource(device);
+      friendlySources(device);
     });
 
     // Tell the hub what we found, then drop hidden scanners from the Scan page.

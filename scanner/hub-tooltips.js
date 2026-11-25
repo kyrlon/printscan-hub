@@ -7,10 +7,10 @@
   // Field labels -> description (shown when hovering the whole field)
   var FIELDS = {
     'device': 'Which scanner to use.',
-    'source': 'Where the paper is scanned from: the glass under the lid (Flatbed) or the document feeder on top (ADF). The list depends on what this scanner supports.',
+    'source': 'Where the paper is scanned from: the glass under the lid, or the document feeder on top (1-sided, or 2-sided if this scanner\'s feeder can scan both sides). The feeder scans every page you load.',
     'resolution': 'Detail in dots per inch (dpi). 200–300 is right for documents, 600 for photos. Higher means bigger files and slower scans.',
     'mode': 'Color, Gray (black-and-white photo quality) or Lineart (pure black and white, smallest files).',
-    'batch': 'Put several pages into one file. Use Manual on the glass (it asks before each page) or Auto with the feeder.',
+    'batch': 'Manual: check before saving. After each scan you see every page so far: Next adds more pages (next page on the glass, or reload the feeder), Rescan redoes the last scan, Finish saves one file. None / Auto save straight away (the feeder always scans every page).',
     'filters': 'Optional clean-up applied after scanning, e.g. auto level or threshold.',
     'format': 'File type. PDF suits documents (multi-page); JPG/PNG suit images.',
     'top': 'Distance of the scan area from the top edge, in mm. You can also drag the box on the preview.',
@@ -23,7 +23,11 @@
 
   // Option / button text -> description
   var OPTIONS = [
-    [/^flatbed$|^platen$/i, 'The glass under the lid. One page at a time. Best for photos, books, receipts and fragile pages.'],
+    [/flip on long edge/i, 'Feeder, both sides of every page, for pages that turn like a book (bound on the side). Load the stack face up.'],
+    [/flip on short edge/i, 'Feeder, both sides of every page, for pages that turn like a notepad (bound at the top). The back pages are turned the right way up.'],
+    [/^feeder, 1-sided$/i, 'Document feeder on top: load a stack face up and it pulls every page through. Front sides only.'],
+    [/^glass \(flatbed\)$/i, 'The glass under the lid. One page at a time. Best for photos, books, receipts and fragile pages.'],
+    [/^flatbed$|^platen$/i,'The glass under the lid. One page at a time. Best for photos, books, receipts and fragile pages.'],
     [/^adf duplex$|duplex/i, 'Document feeder, both sides of every page. Load the stack face up in the top tray.'],
     [/^adf front$/i, 'Document feeder, front side only.'],
     [/^adf back$/i, 'Document feeder, back side only.'],
