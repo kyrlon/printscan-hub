@@ -13,6 +13,18 @@
   .sv-page { min-width:0; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px;
              display:flex; flex-direction:column; align-items:center; gap:8px; }
   .sv-page.changed { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .sv-page[draggable=true] { cursor:grab; }
+  .sv-page.dragging { opacity:.4; }
+  .sv-page.drop-before { box-shadow:-4px 0 0 0 var(--accent); }
+  .sv-page.drop-after { box-shadow:4px 0 0 0 var(--accent); }
+  .sv-page.deleted .sv-thumb img { opacity:.25; filter:grayscale(1); }
+  .sv-page.deleted .sv-thumb::after { content:"Will be deleted"; position:absolute; font-size:13px; font-weight:700;
+                                      color:var(--err); background:var(--card); padding:2px 8px; border-radius:4px; }
+  .sv-page.deleted { border-color:var(--err); border-style:dashed; }
+  .sv-thumb { position:relative; }
+  .sv-page .bar2 { display:flex; gap:6px; width:100%; justify-content:space-between; }
+  .icon-btn.del:hover { border-color:var(--err); color:var(--err); }
+  .icon-btn:disabled { opacity:.35; cursor:default; border-color:var(--line); color:var(--text); }
   .sv-thumb { width:100%; min-width:0; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center;
               cursor:zoom-in; background:var(--bg); border-radius:6px; overflow:hidden; border:0; padding:0; }
   .sv-thumb img { max-width:100%; max-height:100%; box-shadow:0 1px 4px rgba(0,0,0,.25);
@@ -45,12 +57,14 @@
     <button type="button" class="icon-btn" data-all="-90" title="Turn every page left">⟲ All</button>
     <button type="button" class="icon-btn" data-all="90" title="Turn every page right">⟳ All</button>
     <span class="sep"></span>
-    <a class="btn secondary" href="{{ download }}" download title="Download the file as it is saved now">Download</a>
-    <button type="button" id="sv-save" disabled title="Write the rotated pages into the file">Save changes</button>
+    <a class="btn secondary" id="sv-download" href="{{ url_for('scanview.download', f=name) }}"
+       title="Download the file as it is saved now">Download</a>
+    <button type="button" id="sv-undo" class="secondary" hidden title="Forget the changes you haven't saved">Undo all</button>
+    <button type="button" id="sv-save" disabled title="Write the changes into the file">Save changes</button>
   </div>
 </div>
-<div class="sv-msg small" id="sv-msg" role="status" aria-live="polite">
-  {%- if pages %}Click a page to zoom in. Turn pages with ⟲ ⟳, then Save changes.{% endif -%}
+<div class="sv-msg small {{ 'ok' if saved }}" id="sv-msg" role="status" aria-live="polite">
+  {%- if saved %}{{ saved }}{% elif pages %}Click a page to zoom in. Turn ⟲ ⟳, move ◀ ▶ (or drag) and delete 🗑 pages, then Save changes.{% endif -%}
 </div>
 
 {% if not pages %}
@@ -58,15 +72,22 @@
 {% else %}
 <div class="sv-grid" id="sv-grid">
   {% for p in range(1, pages + 1) %}
-  <div class="sv-page" data-page="{{ p }}">
+  <div class="sv-page" data-page="{{ p }}" {% if pages > 1 %}draggable="true"{% endif %}>
     <button type="button" class="sv-thumb" title="Zoom in on page {{ p }}">
-      <img loading="lazy" alt="Page {{ p }}"
+      <img loading="lazy" alt="Page {{ p }}" draggable="false"
            src="{{ url_for('scanview.page', f=name, p=p, s='thumb') }}"></button>
     <div class="bar">
       <button type="button" class="icon-btn" data-turn="-90" title="Turn left">⟲</button>
       <span class="num">Page {{ p }}</span>
       <button type="button" class="icon-btn" data-turn="90" title="Turn right">⟳</button>
     </div>
+    {% if pages > 1 %}
+    <div class="bar2">
+      <button type="button" class="icon-btn" data-move="-1" title="Move earlier">◀</button>
+      <button type="button" class="icon-btn del" data-del title="Delete this page (click again to keep it)">🗑</button>
+      <button type="button" class="icon-btn" data-move="1" title="Move later">▶</button>
+    </div>
+    {% endif %}
   </div>
   {% endfor %}
 </div>
@@ -99,64 +120,132 @@
   var NAME = {{ name|tojson }}, PAGES = {{ pages }};
   var PAGE_URL = {{ url_for('scanview.page')|tojson }}, SAVE_URL = {{ url_for('scanview.save')|tojson }};
   var CSRF = {{ csrf_token()|tojson }};
-  var rot = {};                                   // page -> degrees clockwise, pending
-  var version = Date.now();                       // bumps after Save so images reload
-  var saveBtn = document.getElementById('sv-save'), msg = document.getElementById('sv-msg');
+  var rot = {};                                   // original page -> degrees clockwise, pending
+  var del = {};                                   // original page -> true: delete on Save
+  var saving = false;
+  var grid = document.getElementById('sv-grid');
+  var saveBtn = document.getElementById('sv-save'), undoBtn = document.getElementById('sv-undo'),
+      msg = document.getElementById('sv-msg');
 
   function norm(d) { return ((d % 360) + 360) % 360; }
-  function src(p, size) {
-    return PAGE_URL + '?f=' + encodeURIComponent(NAME) + '&p=' + p + '&s=' + size + '&v=' + version;
-  }
+  function src(p, size) { return PAGE_URL + '?f=' + encodeURIComponent(NAME) + '&p=' + p + '&s=' + size; }
   function card(p) { return document.querySelector('.sv-page[data-page="' + p + '"]'); }
-  function changed() { return Object.keys(rot).some(function (p) { return norm(rot[p]); }); }
+  function cards() { return Array.prototype.slice.call(document.querySelectorAll('.sv-page')); }
+  function order() { return cards().map(function (c) { return +c.dataset.page; }); }
+  function kept() { return order().filter(function (p) { return !del[p]; }); }
+  function moved() { return order().some(function (p, i) { return p !== i + 1; }); }
+  function changed() {
+    return moved() || Object.keys(del).some(function (p) { return del[p]; }) ||
+           Object.keys(rot).some(function (p) { return norm(rot[p]); });
+  }
   function say(text, cls) { msg.textContent = text; msg.className = 'sv-msg small ' + (cls || ''); }
 
-  function paint(p) {
-    var c = card(p), d = rot[p] || 0;
-    if (!c) return;
-    c.querySelector('.sv-thumb img').style.transform = 'rotate(' + d + 'deg)';
-    c.classList.toggle('changed', !!norm(d));
-    saveBtn.disabled = !changed();
+  function refresh() {
+    var list = cards();
+    list.forEach(function (c, i) {
+      var p = +c.dataset.page, d = rot[p] || 0;
+      c.querySelector('.sv-thumb img').style.transform = 'rotate(' + d + 'deg)';
+      c.classList.toggle('deleted', !!del[p]);
+      c.classList.toggle('changed', !del[p] && (!!norm(d) || p !== i + 1));
+      var num = c.querySelector('.num');
+      num.textContent = 'Page ' + (i + 1) + (p !== i + 1 ? '*' : '');
+      num.title = p !== i + 1 ? 'Moved: was page ' + p : '';
+      var prev = c.querySelector('[data-move="-1"]'), next = c.querySelector('[data-move="1"]');
+      if (prev) prev.disabled = i === 0;
+      if (next) next.disabled = i === list.length - 1;
+      var b = c.querySelector('[data-del]');
+      if (b) { b.textContent = del[p] ? '↺' : '🗑'; b.title = del[p] ? 'Keep this page' : 'Delete this page'; }
+    });
+    var dirty = changed();
+    saveBtn.disabled = !dirty || saving;
+    undoBtn.hidden = !dirty;
   }
-  function turn(p, by) { rot[p] = (rot[p] || 0) + by; paint(p); if (lb.page === p) lbDraw(); }
+  function turn(p, by) { rot[p] = (rot[p] || 0) + by; refresh(); if (lb.page === p) lbDraw(); }
+  function move(c, by) {
+    var sib = by < 0 ? c.previousElementSibling : c.nextElementSibling;
+    if (!sib) return;
+    grid.insertBefore(c, by < 0 ? sib : sib.nextElementSibling);
+    refresh();
+    c.querySelector('[data-move="' + by + '"]:not(:disabled)') ? c.querySelector('[data-move="' + by + '"]').focus()
+                                                             : c.querySelector('[data-move]:not(:disabled)').focus();
+  }
 
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-turn]');
     if (t) { turn(+t.closest('.sv-page').dataset.page, +t.dataset.turn); return; }
     var a = e.target.closest('[data-all]');
-    if (a) { for (var p = 1; p <= PAGES; p++) turn(p, +a.dataset.all); return; }
+    if (a) { order().forEach(function (p) { if (!del[p]) rot[p] = (rot[p] || 0) + (+a.dataset.all); }); refresh(); return; }
+    var m = e.target.closest('[data-move]');
+    if (m) { move(m.closest('.sv-page'), +m.dataset.move); return; }
+    var d = e.target.closest('[data-del]');
+    if (d) { var p = +d.closest('.sv-page').dataset.page; del[p] = !del[p]; refresh(); return; }
     var th = e.target.closest('.sv-thumb');
     if (th) lbOpen(+th.closest('.sv-page').dataset.page);
   });
 
+  undoBtn.addEventListener('click', function () {
+    rot = {}; del = {};
+    order().slice().sort(function (a, b) { return a - b; }).forEach(function (p) { grid.appendChild(card(p)); });
+    refresh();
+    say('Changes undone.', '');
+  });
+
+  // Drag a page onto another to move it there (mouse / pen; on touch screens use ◀ ▶).
+  var dragging = null;
+  function clearDrop() { cards().forEach(function (c) { c.classList.remove('drop-before', 'drop-after'); }); }
+  function after(c, e) { var r = c.getBoundingClientRect(); return e.clientX > r.left + r.width / 2; }
+  if (grid) {
+    grid.addEventListener('dragstart', function (e) {
+      dragging = e.target.closest('.sv-page');
+      if (!dragging) return;
+      dragging.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', dragging.dataset.page); } catch (x) {}
+    });
+    grid.addEventListener('dragover', function (e) {
+      var c = e.target.closest('.sv-page');
+      if (!dragging || !c) return;
+      e.preventDefault();
+      clearDrop();
+      if (c !== dragging) c.classList.add(after(c, e) ? 'drop-after' : 'drop-before');
+    });
+    grid.addEventListener('drop', function (e) {
+      var c = e.target.closest('.sv-page');
+      if (!dragging || !c || c === dragging) return;
+      e.preventDefault();
+      grid.insertBefore(dragging, after(c, e) ? c.nextElementSibling : c);
+      refresh();
+    });
+    grid.addEventListener('dragend', function () {
+      if (dragging) dragging.classList.remove('dragging');
+      dragging = null; clearDrop();
+    });
+  }
+
   saveBtn.addEventListener('click', function () {
+    var keep = kept();
+    if (!keep.length) { say('Keep at least one page. To remove the whole scan, delete it under Files on the Scan page.', 'err'); return; }
     var body = new FormData(), out = {};
-    Object.keys(rot).forEach(function (p) { if (norm(rot[p])) out[p] = norm(rot[p]); });
-    body.append('csrf', CSRF); body.append('f', NAME); body.append('rotations', JSON.stringify(out));
+    keep.forEach(function (p) { if (norm(rot[p] || 0)) out[p] = norm(rot[p]); });
+    body.append('csrf', CSRF); body.append('f', NAME);
+    body.append('rotations', JSON.stringify(out)); body.append('order', JSON.stringify(keep));
+    saving = true;
     var stop = window.hubBusy ? window.hubBusy(saveBtn, 'Saving…') : function () {};
     fetch(SAVE_URL, { method: 'POST', body: body, credentials: 'same-origin' })
       .then(function (r) { return r.json().catch(function () { return { ok: false, message: 'Couldn\'t save (error ' + r.status + ').' }; }); })
       .then(function (d) {
-        stop();
-        if (!d.ok) { say(d.message, 'err'); saveBtn.disabled = !changed(); return; }
-        rot = {}; version = Date.now();
-        document.querySelectorAll('.sv-page').forEach(function (c) {
-          var img = c.querySelector('.sv-thumb img');
-          img.style.transition = 'none'; img.style.transform = '';
-          img.src = src(+c.dataset.page, 'thumb');
-          c.classList.remove('changed');
-          setTimeout(function () { img.style.transition = ''; }, 50);
-        });
-        saveBtn.disabled = true;
-        say(d.message, 'ok');
-        if (lb.page) lbLoad();
+        if (!d.ok) { saving = false; stop(); say(d.message, 'err'); refresh(); return; }
+        // Page numbers changed: reload so thumbnails, count and links match the file.
+        rot = {}; del = {};
+        location.replace(location.pathname + '?f=' + encodeURIComponent(NAME) + '&saved=' + encodeURIComponent(d.message));
       })
-      .catch(function () { stop(); say('Couldn\'t reach the hub. Try again.', 'err'); saveBtn.disabled = !changed(); });
+      .catch(function () { saving = false; stop(); say('Couldn\'t reach the hub. Try again.', 'err'); refresh(); });
   });
 
   window.addEventListener('beforeunload', function (e) {
-    if (changed()) { e.preventDefault(); e.returnValue = ''; }
+    if (!saving && changed()) { e.preventDefault(); e.returnValue = ''; }
   });
+  if (grid) refresh();
 
   // ---- zoom view ----------------------------------------------------------
   var box = document.getElementById('lb'), stage = document.getElementById('lb-stage'),
@@ -186,7 +275,8 @@
   }
   function lbLoad() {
     loading.hidden = false; img.style.visibility = 'hidden';
-    numLbl.textContent = 'Page ' + lb.page + ' of ' + PAGES;
+    var seq = order(), pos = seq.indexOf(lb.page) + 1;
+    numLbl.textContent = 'Page ' + pos + ' of ' + seq.length + (del[lb.page] ? ' (will be deleted)' : '');
     var want = lb.page;
     img.onload = function () {
       if (lb.page !== want) return;
@@ -198,7 +288,10 @@
   }
   function lbOpen(p) { lb.page = p; box.hidden = false; document.body.style.overflow = 'hidden'; lbLoad(); }
   function lbClose() { box.hidden = true; lb.page = 0; document.body.style.overflow = ''; img.removeAttribute('src'); }
-  function lbGo(d) { var p = lb.page + d; if (p >= 1 && p <= PAGES) { lb.page = p; lbLoad(); } }
+  function lbGo(d) {                             // follows the order on screen, not the file's
+    var seq = order(), i = seq.indexOf(lb.page) + d;
+    if (i >= 0 && i < seq.length) { lb.page = seq[i]; lbLoad(); }
+  }
 
   box.addEventListener('click', function (e) {
     var b = e.target.closest('[data-lb]');

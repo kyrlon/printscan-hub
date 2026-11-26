@@ -418,12 +418,6 @@ def may_access(name):
     return owner is None or owner == owner_key()
 
 
-def file_url(name):
-    """Download link for a scan, through the access checks below."""
-    from flask import url_for
-    return url_for("scanproxy.scan_app", path="api/v1/files/" + urllib.parse.quote(name, safe=""))
-
-
 # ---------------------------------------------------------------- routes ---
 @bp.route("/scan/app/", defaults={"path": ""}, methods=["GET", "POST", "PUT", "DELETE"])
 @bp.route("/scan/app/<path:path>", methods=["GET", "POST", "PUT", "DELETE"])

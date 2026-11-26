@@ -369,17 +369,23 @@ Set **Batch → Manual**. After each scan a window shows every page scanned so f
 
 With any other Batch setting the file is saved straight away. You can still open or delete it under **Files**.
 
-### View, zoom and rotate a saved scan
+### View, zoom and edit a saved scan
 
 After every scan a bar at the bottom says **Saved … · View & rotate**. In **Files**, the eye icon
-opens the same page. It shows every page as a thumbnail:
+opens the same page. It works for PDFs, images, and the `.zip` scanservjs makes when a multi-page
+scan is saved as JPG or PNG (one image per page). Every page is shown as a thumbnail:
 
-- **⟲ / ⟳** under a page turns it; **⟲ All / ⟳ All** turns every page
+- **⟲ / ⟳** turns a page; **⟲ All / ⟳ All** turns every page
+- **◀ / ▶** moves a page earlier or later; with a mouse you can also drag it into place
+- **🗑** marks a page for deletion (click **↺** to keep it); **Undo all** forgets unsaved changes
 - Click a page to zoom: mouse wheel, pinch, **+ / −**, double-click, or drag to move around.
   Keys: **← →** pages, **+ −** zoom, **0** fit, **1** actual size, **R** turn, **Esc** close
-- **Save changes** writes the turns into the file. PDFs keep their quality and any text layer (only
-  each page's rotation flag changes); JPG/PNG/TIFF are saved again at high quality. The file keeps
-  its date, so it stays in place in the list.
+- **Save changes** writes everything into the file. PDFs keep their quality and any text layer
+  (only the page list and each page's rotation flag change); turned images are saved again at high
+  quality. The file keeps its date, so it stays in place in the list. **Download** gets the file as
+  saved now.
+
+A scan needs at least one page; to remove the whole file, delete it under **Files**.
 
 The hub reads `scans/` directly for this (it's mounted into the hub container too), and only shows
 scans this browser may see under the current Files mode.
