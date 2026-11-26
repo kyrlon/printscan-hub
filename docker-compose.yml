@@ -48,6 +48,9 @@ services:
       SCAN_BIND: 127.0.0.1             # reachable only through the portal
       SCAN_DEFAULT_PAPER: ${SCAN_DEFAULT_PAPER:-letter}
       SCAN_DEFAULT_SOURCE: ${SCAN_DEFAULT_SOURCE:-auto}
+      # "Skip blank pages": a page counts as blank below this % of ink (raise it if
+      # blank backs with show-through are kept, lower it if light pages go missing)
+      SCAN_BLANK_INK: ${SCAN_BLANK_INK:-0.02}
       # Network scanners are usually auto-detected (eSCL/AirScan). If not, set one:
       SANED_NET_HOSTS: ${SANED_NET_HOSTS:-}
       AIRSCAN_DEVICES: ${AIRSCAN_DEVICES:-}

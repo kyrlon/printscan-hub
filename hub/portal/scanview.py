@@ -33,6 +33,7 @@ CACHE_DIR = os.path.join(tempfile.gettempdir(), "psh-view")
 CACHE_KEEP = 24 * 3600
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 SIZES = {"thumb": (45, 360), "full": (150, 2600)}     # PDF dpi, image max side
+SKIP_BLANK = "Skip blank pages"                       # the scan app's filter (scanservjs/config/config.local.js)
 
 bp = Blueprint("scanview", __name__)
 
@@ -317,8 +318,9 @@ def add_options():
             continue
         pick = lambda k: {"options": (f.get(k) or {}).get("options") or [], "default": (f.get(k) or {}).get("default")}
         res = pick("--resolution")
+        filters = (d.get("settings", {}).get("filters") or {}).get("options") or []
         out.append({"id": d["id"], "name": d.get("name") or d["id"], "source": pick("--source"),
-                    "resolution": res, "mode": pick("--mode"),
+                    "resolution": res, "mode": pick("--mode"), "skip_blank": SKIP_BLANK in filters,
                     "feeder": ((f.get("--source") or {}).get("hubFeeder"))})
     if not out:
         return jsonify(ok=False, message="No scanner is available right now."), 404
@@ -353,8 +355,10 @@ def add_pages():
     for key, feat in (("left", "-l"), ("top", "-t"), ("width", "-x"), ("height", "-y")):
         if f.get(feat, {}).get("default") is not None:
             params[key] = f[feat]["default"]
+    filters = (dev.get("settings", {}).get("filters") or {}).get("options") or []
+    skip = [SKIP_BLANK] if request.form.get("skip_blank") and SKIP_BLANK in filters else []
     before = page_count(path)
-    new_name, err = scanproxy.scan_for_hub(params, pipe)
+    new_name, err = scanproxy.scan_for_hub(params, pipe, filters=skip)
     if err:
         return jsonify(ok=False, message=f"Couldn't scan: {err}"), 409 if "in use" in err else 500
     new_path = os.path.join(SCANS_DIR, new_name)

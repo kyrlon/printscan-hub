@@ -354,6 +354,13 @@ stack over, scan the backs, and the pages are put in order. A scanner that lists
 (left-aligned, centred…) keeps its own names. Hover over any setting for a short description; on a
 phone or tablet, press and hold it. This works throughout the portal too.
 
+**Skip blank pages:** pick it under **Filters** (the Scan page remembers it). After a feeder scan, pages
+with next to no ink are left out, such as the blank backs in a 2-sided scan of mixed pages. Shadows at
+the edges, show-through from the other side and dust don't count as ink; a few lines of text or a
+signature do. If every page looks blank, all are kept. Tune it with `SCAN_BLANK_INK` in `.env`
+(default `0.02`, the % of the page that must have ink): raise it if blank backs are kept, lower it if
+nearly empty pages go missing. **Add pages** on the View page has the same checkbox.
+
 The feeder always scans every page you load. (Plain scanservjs scans only the first sheet unless
 Batch is *Auto*.) On a scanner whose feeder scans both sides, choosing a Feeder source sets **Batch**
 to *Auto* and greys it out; choose the glass and your Batch setting comes back. With a 1-sided

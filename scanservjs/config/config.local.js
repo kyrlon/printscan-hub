@@ -195,6 +195,7 @@ const SIDES = {
   short: 'Feeder, 2-sided (flip on short edge)',
 };
 const sourceMap = {};          // device id -> { label: { source, flip } }
+const SKIP_BLANK = 'Skip blank pages';
 
 function sourceKind(o) {
   return SOURCE_MATCH.duplex(o) ? 'duplex' : SOURCE_MATCH.flatbed(o) ? 'flatbed'
@@ -233,6 +234,7 @@ function friendlySources(device) {
 //  - the feeder scans the whole stack, not only its first page: with Batch "None"
 //    scanservjs asks for a single page, which left the rest of the stack unscanned
 //  - 2-sided, flip on short edge: every second page turned the right way up
+//  - "Skip blank pages" (under Filters): feeder pages with next to no ink are dropped
 //  - Batch "Manual" reviews before saving: each pass shows thumbnails of all pages
 //    so far (Next adds pages, Rescan redoes the last pass, Finish saves), and works
 //    with the feeder (a whole stack per pass)
@@ -255,7 +257,17 @@ try {
 
     const feeder = !!pick.source && sourceKind(pick.source) !== null && sourceKind(pick.source) !== 'flatbed';
     const manual = req.batch === 'manual';
-    if (!manual && !(feeder && req.batch === 'none')) {
+    // "Skip blank pages" is listed with the filters so it can be picked on the Scan
+    // page, but it isn't an ImageMagick filter: take it out (of the request the scan
+    // app finishes with, too) and drop blank pages here instead.
+    const skipBlank = Array.isArray(request.filters) && request.filters.includes(SKIP_BLANK);
+    if (skipBlank) {
+      request.filters = request.filters.filter(f => f !== SKIP_BLANK);
+      req.filters = request.filters;
+    }
+    // Batch "Auto" is what the Scan page sends for a 2-sided feeder (Batch locked),
+    // so it must come through here too, or short-edge pages wouldn't be turned.
+    if (!manual && !(feeder && ['none', 'auto'].includes(req.batch))) {
       return scan.call(this, req);           // collate modes, flatbed without review: as before
     }
     const dir = this.config.tempDirectory;
@@ -267,7 +279,7 @@ try {
     }
     const flip = pick.flip === 'short' ? 'short' : 'none';
     return `hub-scan-pass pre ${q(dir)} ${pass} && ${scan.call(this, req)}` +
-           ` && hub-scan-pass post ${q(dir)} ${pass} ${kind} ${flip} ${manual ? 1 : 0}`;
+           ` && hub-scan-pass post ${q(dir)} ${pass} ${kind} ${flip} ${manual ? 1 : 0} ${skipBlank ? 1 : 0}`;
   };
 
   // The review dialog shows the scan of this pass (~tmp-scan-0-NNNN.tif); give it
@@ -310,6 +322,11 @@ module.exports = {
     // which decides who can see which files. SCAN_BIND keeps it off the network.
     config.port = parseInt(process.env.SCAN_PORT || '8080', 10);
     config.host = process.env.SCAN_BIND || '127.0.0.1';
+
+    // Shown in the Filters list; handled by the scan hook above, not by ImageMagick.
+    if (Array.isArray(config.filters) && !config.filters.some(f => f.description === SKIP_BLANK)) {
+      config.filters.push({ description: SKIP_BLANK, params: '' });
+    }
 
     // Uncomment to set default file name:
     // config.defaultOutputFilename = 'scan-{date}-{time}';

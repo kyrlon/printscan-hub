@@ -5,12 +5,14 @@
 # in the folder into the final file, sorted by name.
 #
 #   hub-scan-pass pre  DIR PASS                  clear what an earlier try of this pass left
-#   hub-scan-pass post DIR PASS KIND FLIP REVIEW
+#   hub-scan-pass post DIR PASS KIND FLIP REVIEW [SKIPBLANK]
 #     KIND   batch   the feeder scanned the whole stack into ~tmp-scan-PASS-NNNN.tif
 #            single  one page, already at ~tmp-scan-0-PASS.tif (glass)
 #     FLIP   short   turn every second page over (2-sided, flip on short edge)
 #     REVIEW 1       manual batch: move the pages to ~tmp-scan-0-PASS.tif(.pNNNN.tif)
 #                    and draw thumbnails of every page so far for the review dialog
+#     SKIPBLANK 1    feeder scans: delete pages with less than SCAN_BLANK_INK % ink
+#                    (default 0.02); SCAN_BLANK_LEVEL is how dark counts as ink (75 %)
 set -u
 export LC_ALL=C
 step=$1 dir=$2 pass=$3
@@ -23,8 +25,18 @@ if [ "$step" = pre ]; then
   exit 0
 fi
 
-kind=$4 flip=$5 review=$6
+kind=$4 flip=$5 review=$6 skipblank=${7:-0}
 shopt -s nullglob
+
+# Share of the page (edges ignored, so shadows at the border don't count) that has
+# ink, as a percentage. Shrunk to 1000 px wide first for speed; anything lighter
+# than SCAN_BLANK_LEVEL (show-through, paper texture, noise) counts as paper.
+# Typical values: text page 2-10 %, a few lines 0.1 %, a signature 0.05 %,
+# dust specks 0.01 %, an empty page 0.
+ink() {
+  convert "$1[0]" -colorspace Gray -gravity center -crop 92%x92%+0+0 +repage -resize 1000x \
+    -threshold "${SCAN_BLANK_LEVEL:-75}%" -format '%[fx:100*(1-mean)]' info: 2>/dev/null
+}
 
 if [ "$kind" = batch ]; then
   pages=(./~tmp-scan-"$pass"-*.tif)
@@ -32,6 +44,22 @@ if [ "$kind" = batch ]; then
   if [ "$flip" = short ]; then
     # The scanner returns back sides as if the sheet were turned on its long edge.
     for ((i = 1; i < ${#pages[@]}; i += 2)); do mogrify -rotate 180 "${pages[$i]}" || exit 1; done
+  fi
+  if [ "$skipblank" = 1 ]; then
+    # Drop pages with next to no ink (blank backs of 1-sided sheets, separator
+    # sheets). Every page blank? Keep them all rather than save nothing.
+    limit=${SCAN_BLANK_INK:-0.02}
+    blank=()
+    for p in "${pages[@]}"; do
+      v=$(ink "$p")
+      if [ -n "$v" ] && awk -v v="$v" -v l="$limit" 'BEGIN { exit !(v < l) }'; then blank+=("$p"); fi
+      echo "hub-scan-pass: $(basename "$p") ink ${v:-?}%" >&2
+    done
+    if [ ${#blank[@]} -gt 0 ] && [ ${#blank[@]} -lt ${#pages[@]} ]; then
+      rm -f -- "${blank[@]}"
+      echo "hub-scan-pass: skipped ${#blank[@]} blank page(s)" >&2
+      pages=(./~tmp-scan-"$pass"-*.tif)
+    fi
   fi
   if [ "$review" = 1 ]; then
     # (./ in globs: a leading ~ would be read as a home directory.)

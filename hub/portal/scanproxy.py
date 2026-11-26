@@ -435,7 +435,7 @@ def _claim_scanner(kind, device_id=None):
     return device_id, None
 
 
-def scan_for_hub(params, pipeline, kind="Add pages"):
+def scan_for_hub(params, pipeline, kind="Add pages", filters=()):
     """Run a scan on behalf of a hub page (not the scan app): same "scanner in use"
     rules and preview handling as the Scan page. Returns (file name, None) or
     (None, error text)."""
@@ -444,7 +444,7 @@ def scan_for_hub(params, pipeline, kind="Add pages"):
         return None, refusal.get_data(as_text=True)
     try:
         _begin_capture()
-        body = {"params": params, "batch": "none", "index": 1, "pipeline": pipeline, "filters": []}
+        body = {"params": params, "batch": "none", "index": 1, "pipeline": pipeline, "filters": list(filters)}
         r = requests.post(SCANNER_URL + "/api/v1/scan", json=body, timeout=(5, 900))
         if r.status_code >= 400 and OPEN_FAILED.search(r.content or b""):
             time.sleep(2)

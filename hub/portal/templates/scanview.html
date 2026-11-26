@@ -115,6 +115,10 @@
         <div><label for="add-resolution">Resolution (dpi)</label><select id="add-resolution" name="resolution"></select></div>
         <div><label for="add-mode">Color</label><select id="add-mode" name="mode"></select></div>
       </div>
+      <div class="checks" id="add-skip-row">
+        <label title="Feeder scans: leave out pages with next to no ink, like the blank backs of 1-sided sheets">
+          <input type="checkbox" name="skip_blank" value="1" id="add-skip"> Skip blank pages (feeder)</label>
+      </div>
       <div class="add-actions">
         <button type="button" class="secondary" id="add-cancel">Cancel</button>
         <button type="submit" id="add-go">Scan and add</button>
@@ -349,6 +353,8 @@
     fill(document.getElementById('add-resolution'), { options: res, default: def },
          p.resolution !== undefined ? +p.resolution : undefined);
     fill(document.getElementById('add-mode'), d.mode, p.mode);
+    document.getElementById('add-skip-row').hidden = !d.skip_blank;
+    document.getElementById('add-skip').checked = !!p.skip_blank;
     document.getElementById('add-feeder').textContent =
       d.feeder === 'loaded' ? 'Paper is in the feeder.' : d.feeder === 'empty' ? 'The feeder is empty.' : '';
   }
@@ -383,7 +389,8 @@
     e.preventDefault();
     var fd = new FormData(addForm), p = prefs();
     p.device = fd.get('device');
-    p[p.device] = { source: fd.get('source'), resolution: fd.get('resolution'), mode: fd.get('mode') };
+    p[p.device] = { source: fd.get('source'), resolution: fd.get('resolution'), mode: fd.get('mode'),
+                    skip_blank: !!fd.get('skip_blank') };
     try { localStorage.setItem(PREF, JSON.stringify(p)); } catch (x) {}
     fd.append('csrf', CSRF); fd.append('f', NAME);
     addBusy = true; addMsg.textContent = ''; addMsg.className = 'small';
