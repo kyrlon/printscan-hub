@@ -218,6 +218,11 @@ function friendlySources(device) {
   const label = real => Object.keys(map).find(l => map[l].source === real) || real;
   f.default = label(f.default);
   f.hubOriginal = f.options;
+  // A feeder that scans both sides needs no Batch choice: the Scan page sets it to
+  // Auto and greys it out for these sources (hub-feeder.js). With a 1-sided feeder
+  // Batch stays, because Collate is how you get both sides there.
+  f.hubBatchLock = map[SIDES.long]
+    ? Object.keys(map).filter(l => [SIDES.adf, SIDES.long, SIDES.short].includes(l)) : [];
   f.options = Object.keys(map);
   sourceMap[device.id] = map;
 }

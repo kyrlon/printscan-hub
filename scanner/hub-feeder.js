@@ -3,6 +3,20 @@
 // config.local.js adds it per device (features["--source"].hubFeeder).
 (function () {
   'use strict';
+
+  // Batch is locked to Auto while a feeder source is selected on a scanner whose
+  // feeder scans both sides (config.local.js lists those sources in hubBatchLock).
+  // The Batch field and the scan request call these (patched in, see Dockerfile).
+  // The browser's own Batch choice is kept and comes back when switching to the glass.
+  window.hubBatchLocked = function (device, source) {
+    var f = device && device.features && device.features['--source'];
+    return !!(f && Array.isArray(f.hubBatchLock) && f.hubBatchLock.indexOf(source) >= 0);
+  };
+  window.hubFixRequest = function (request, device) {
+    if (request && request.params && window.hubBatchLocked(device, request.params.source)) request.batch = 'auto';
+    return request;
+  };
+
   var BOX_ID = 'hub-feeder';
   var devices = {};        // device id -> { feeder, mode }
   var atLoad = {};         // device id -> feeder state when the page loaded

@@ -10,7 +10,7 @@
     'source': 'Where the paper is scanned from: the glass under the lid, or the document feeder on top (1-sided, or 2-sided if this scanner\'s feeder can scan both sides). The feeder scans every page you load.',
     'resolution': 'Detail in dots per inch (dpi). 200–300 is right for documents, 600 for photos. Higher means bigger files and slower scans.',
     'mode': 'Color, Gray (black-and-white photo quality) or Lineart (pure black and white, smallest files).',
-    'batch': 'Manual: check before saving. After each scan you see every page so far: Next adds more pages (next page on the glass, or reload the feeder), Rescan redoes the last scan, Finish saves one file. None / Auto save straight away (the feeder always scans every page).',
+    'batch': 'Manual: check before saving. After each scan you see every page so far: Next adds more pages (next page on the glass, or reload the feeder), Rescan redoes the last scan, Finish saves one file. None / Auto save straight away. With a 2-sided feeder selected this is set to Auto for you.',
     'filters': 'Optional clean-up applied after scanning, e.g. auto level or threshold.',
     'format': 'File type. PDF suits documents (multi-page); JPG/PNG suit images.',
     'top': 'Distance of the scan area from the top edge, in mm. You can also drag the box on the preview.',

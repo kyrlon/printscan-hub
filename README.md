@@ -354,14 +354,16 @@ stack over, scan the backs, and the pages are put in order. A scanner that lists
 (left-aligned, centred…) keeps its own names. Hover over any setting for a short description; on a
 phone or tablet, press and hold it. This works throughout the portal too.
 
-The feeder always scans every page you load, whatever **Batch** says. (Plain scanservjs scans only
-the first sheet unless Batch is *Auto*.)
+The feeder always scans every page you load. (Plain scanservjs scans only the first sheet unless
+Batch is *Auto*.) On a scanner whose feeder scans both sides, choosing a Feeder source sets **Batch**
+to *Auto* and greys it out; choose the glass and your Batch setting comes back. With a 1-sided
+feeder, Batch stays available for *Collate*.
 
 ### Check the pages before saving
 
 Set **Batch → Manual**. After each scan a window shows every page scanned so far:
 
-- **Next** adds more pages: put the next page on the glass, or reload the feeder (you can switch Source in between)
+- **Next** adds more pages: put the next page on the glass (or reload the feeder, on scanners with a 1-sided feeder)
 - **Rescan** redoes the last scan (its pages are replaced, not added)
 - **Finish** saves everything as one file
 

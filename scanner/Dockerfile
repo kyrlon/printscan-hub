@@ -24,6 +24,18 @@ RUN sed -i -E 's/("btn-scan":[^,]*\(\[)(["`])Scan\2\]/\1\2Scan now\2]/g' /usr/li
 RUN sed -i 's/this\.params\.source=\([A-Za-z_$]*\)\.params\.source||\([A-Za-z_$]*\)\.features\["--source"\]\.default/this.params.source=(\2.features["--source"].hubForceDefault||!\2.features["--source"].options.includes(\1.params.source)?null:\1.params.source)||\2.features["--source"].default/' /usr/lib/scanservjs/client/assets/index-*.js \
     && grep -q 'hubForceDefault' /usr/lib/scanservjs/client/assets/index-*.js
 
+# Feeder on a scanner that scans both sides: show Batch as "Auto", greyed out,
+# and send batch=auto with the scan (helpers in scanner/hub-feeder.js). Two patches:
+#   Batch field: h(X,{modelValue:o.request.batch,...  -> value/disabled/hint from hubBatchLocked
+#   (and add disabled/hint to the props Vue re-checks on updates, its "8,[...]" list)
+#   scan():      const t=Zt.clone(this.request)       -> passed through hubFixRequest
+RUN f=$(ls /usr/lib/scanservjs/client/assets/index-*.js) \
+    && sed -i -E 's/([A-Za-z_$]+)\(([A-Za-z_$]+),\{modelValue:([A-Za-z_$]+)\.request\.batch,/\1(\2,{modelValue:window.hubBatchLocked\&\&hubBatchLocked(\3.device,\3.request.params.source)?"auto":\3.request.batch,disabled:!!(window.hubBatchLocked\&\&hubBatchLocked(\3.device,\3.request.params.source)),hint:window.hubBatchLocked\&\&hubBatchLocked(\3.device,\3.request.params.source)?"Feeder: every page. Glass for other options":void 0,"persistent-hint":!0,/' "$f" \
+    && sed -i -E 's/(items:[A-Za-z_$]+\.batchModes,[^}]*\},null,8,\["modelValue")/\1,"disabled","hint"/' "$f" \
+    && sed -i -E 's/(scan\(e\)\{[^}]*const t=)([A-Za-z_$]+\.clone\(this\.request\))/\1window.hubFixRequest?hubFixRequest(\2,this.device):\2/' "$f" \
+    && grep -q 'disabled:!!(window.hubBatchLocked' "$f" && grep -q 'hubFixRequest(' "$f" \
+    && grep -q 'batchModes,[^}]*},null,8,\["modelValue","disabled","hint"' "$f"
+
 # Use sane-airscan only for driverless scanners: SANE's older built-in "escl"
 # backend finds the same devices again, so every scanner was listed 2-3 times.
 RUN sed -i 's/^escl$/#escl  (disabled: sane-airscan handles eSCL)/' /etc/sane.d/dll.conf \
