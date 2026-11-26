@@ -47,6 +47,11 @@
   .lb-stage img { position:absolute; left:50%; top:50%; transform-origin:center center; max-width:none;
                   user-select:none; -webkit-user-drag:none; background:#fff; box-shadow:0 2px 18px rgba(0,0,0,.5); }
   .lb-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#98a2b3; }
+  .add-back { position:fixed; inset:0; z-index:40; background:rgba(0,0,0,.45); display:flex;
+              align-items:flex-start; justify-content:center; padding:8vh 16px 16px; overflow:auto; }
+  .add-box { width:100%; max-width:560px; margin:0; box-shadow:0 12px 40px rgba(0,0,0,.35); }
+  .add-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+  #add-msg.err { color:var(--err); margin-top:10px; }
   @media (max-width:600px) { .lb-hide-sm { display:none; } .sv-grid { grid-template-columns:repeat(2,1fr); gap:10px; } }
 </style>
 
@@ -57,6 +62,7 @@
     <button type="button" class="icon-btn" data-all="-90" title="Turn every page left">⟲ All</button>
     <button type="button" class="icon-btn" data-all="90" title="Turn every page right">⟳ All</button>
     <span class="sep"></span>
+    <button type="button" class="secondary" id="sv-add" title="Scan more pages and add them at the end">+ Add pages</button>
     <a class="btn secondary" id="sv-download" href="{{ url_for('scanview.download', f=name) }}"
        title="Download the file as it is saved now">Download</a>
     <button type="button" id="sv-undo" class="secondary" hidden title="Forget the changes you haven't saved">Undo all</button>
@@ -92,6 +98,30 @@
   {% endfor %}
 </div>
 {% endif %}
+
+<div class="add-back" id="add-panel" hidden>
+  <div class="add-box card" role="dialog" aria-modal="true" aria-labelledby="add-title">
+    <h2 id="add-title">Add pages</h2>
+    <p class="muted small" style="margin:0 0 6px">Load the pages (feeder, or on the glass), choose the settings, then Scan.
+      The new pages go at the end of this file.</p>
+    <div id="add-loading" class="muted small">Asking the scanner…</div>
+    <form id="add-form" hidden>
+      <label for="add-device">Scanner</label>
+      <select id="add-device" name="device"></select>
+      <div id="add-feeder" class="small muted" style="margin-top:4px"></div>
+      <div class="row">
+        <div><label for="add-source">Paper from</label><select id="add-source" name="source"></select></div>
+        <div><label for="add-resolution">Resolution (dpi)</label><select id="add-resolution" name="resolution"></select></div>
+        <div><label for="add-mode">Color</label><select id="add-mode" name="mode"></select></div>
+      </div>
+      <div class="add-actions">
+        <button type="button" class="secondary" id="add-cancel">Cancel</button>
+        <button type="submit" id="add-go">Scan and add</button>
+      </div>
+    </form>
+    <div id="add-msg" class="small" role="status" aria-live="polite"></div>
+  </div>
+</div>
 
 <div class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Page view">
   <div class="lb-bar">
@@ -244,6 +274,93 @@
 
   window.addEventListener('beforeunload', function (e) {
     if (!saving && changed()) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  // ---- Add pages: scan more and append them ---------------------------------
+  var ADD_OPTS = {{ url_for('scanview.add_options')|tojson }}, ADD_URL = {{ url_for('scanview.add_pages')|tojson }};
+  var addPanel = document.getElementById('add-panel'), addForm = document.getElementById('add-form'),
+      addMsg = document.getElementById('add-msg'), devSel = document.getElementById('add-device'),
+      addDevices = [], addBusy = false;
+  var PREF = 'psh-add-pages';
+  function prefs() { try { return JSON.parse(localStorage.getItem(PREF)) || {}; } catch (e) { return {}; } }
+  function fill(sel, feat, saved, fmt) {
+    sel.innerHTML = '';
+    (feat.options || []).forEach(function (o) {
+      var opt = document.createElement('option');
+      opt.value = o; opt.textContent = fmt ? fmt(o) : o; sel.appendChild(opt);
+    });
+    var want = (feat.options || []).indexOf(saved) >= 0 ? saved : feat.default;
+    if (want !== undefined && want !== null) sel.value = want;
+    sel.closest('div').hidden = !(feat.options || []).length;
+  }
+  function showDevice() {
+    var d = addDevices[devSel.selectedIndex] || addDevices[0], p = prefs()[d.id] || {};
+    // The scanner's own choice (feeder when it has paper) beats the remembered source.
+    fill(document.getElementById('add-source'), d.source, d.feeder ? null : p.source);
+    // Some scanners list odd steps (1, 1.17, 2.3…) and a default that isn't in the list:
+    // offer whole numbers from 75 dpi up and start from the closest one to the default.
+    var res = (d.resolution.options || []).filter(function (r) { return r >= 75 && r === Math.round(r); });
+    if (!res.length) res = d.resolution.options || [];
+    var def = d.resolution.default;
+    if (res.length && res.indexOf(def) < 0) {
+      def = res.reduce(function (a, b) { return Math.abs(b - def) < Math.abs(a - def) ? b : a; });
+    }
+    fill(document.getElementById('add-resolution'), { options: res, default: def },
+         p.resolution !== undefined ? +p.resolution : undefined);
+    fill(document.getElementById('add-mode'), d.mode, p.mode);
+    document.getElementById('add-feeder').textContent =
+      d.feeder === 'loaded' ? 'Paper is in the feeder.' : d.feeder === 'empty' ? 'The feeder is empty.' : '';
+  }
+  function closeAdd() { if (!addBusy) addPanel.hidden = true; }
+  document.getElementById('sv-add').addEventListener('click', function () {
+    if (changed()) { say('Save or undo your changes first, then add pages.', 'err'); return; }
+    addPanel.hidden = false; addForm.hidden = true; addMsg.textContent = ''; addMsg.className = 'small';
+    document.getElementById('add-loading').hidden = false;
+    fetch(ADD_OPTS + '?f=' + encodeURIComponent(NAME), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        document.getElementById('add-loading').hidden = true;
+        if (!d.ok) { addMsg.textContent = d.message; addMsg.className = 'small err'; return; }
+        addDevices = d.devices;
+        devSel.innerHTML = '';
+        addDevices.forEach(function (dev) { var o = document.createElement('option'); o.value = dev.id; o.textContent = dev.name; devSel.appendChild(o); });
+        var last = prefs().device;
+        if (addDevices.some(function (x) { return x.id === last; })) devSel.value = last;
+        devSel.hidden = addDevices.length < 2;
+        document.querySelector('label[for="add-device"]').hidden = addDevices.length < 2;
+        showDevice();
+        addForm.hidden = false;
+        document.getElementById('add-go').focus();
+      })
+      .catch(function () { document.getElementById('add-loading').hidden = true; addMsg.textContent = 'Couldn\'t reach the hub.'; addMsg.className = 'small err'; });
+  });
+  devSel.addEventListener('change', showDevice);
+  document.getElementById('add-cancel').addEventListener('click', closeAdd);
+  addPanel.addEventListener('click', function (e) { if (e.target === addPanel) closeAdd(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !addPanel.hidden) closeAdd(); });
+  addForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var fd = new FormData(addForm), p = prefs();
+    p.device = fd.get('device');
+    p[p.device] = { source: fd.get('source'), resolution: fd.get('resolution'), mode: fd.get('mode') };
+    try { localStorage.setItem(PREF, JSON.stringify(p)); } catch (x) {}
+    fd.append('csrf', CSRF); fd.append('f', NAME);
+    addBusy = true; addMsg.textContent = ''; addMsg.className = 'small';
+    document.getElementById('add-cancel').disabled = true;
+    var stop = window.hubBusy ? window.hubBusy(document.getElementById('add-go'), 'Scanning…') : function () {};
+    fetch(ADD_URL, { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, message: 'Something went wrong (error ' + r.status + ').' }; }); })
+      .then(function (d) {
+        addBusy = false; stop(); document.getElementById('add-cancel').disabled = false;
+        if (!d.ok) { addMsg.textContent = d.message; addMsg.className = 'small err'; return; }
+        saving = true;
+        location.replace(location.pathname + '?f=' + encodeURIComponent(d.file || NAME) + '&saved=' + encodeURIComponent(d.message));
+      })
+      .catch(function () {
+        addBusy = false; stop(); document.getElementById('add-cancel').disabled = false;
+        addMsg.textContent = 'Lost contact with the hub. The scan may still finish; reload this page in a minute.';
+        addMsg.className = 'small err';
+      });
   });
   if (grid) refresh();
 

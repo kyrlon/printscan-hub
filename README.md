@@ -378,6 +378,10 @@ scan is saved as JPG or PNG (one image per page). Every page is shown as a thumb
 - **⟲ / ⟳** turns a page; **⟲ All / ⟳ All** turns every page
 - **◀ / ▶** moves a page earlier or later; with a mouse you can also drag it into place
 - **🗑** marks a page for deletion (click **↺** to keep it); **Undo all** forgets unsaved changes
+- **+ Add pages** scans more and puts them at the end: pick the scanner, *Paper from* (glass or
+  feeder), resolution and color, then **Scan and add**. Missed a page or need the backs? Scan
+  them and move them into place. A single JPG/PNG can only hold one page, so adding to one turns it
+  into a `.zip` of images (same name); scan to PDF if you want one file
 - Click a page to zoom: mouse wheel, pinch, **+ / −**, double-click, or drag to move around.
   Keys: **← →** pages, **+ −** zoom, **0** fit, **1** actual size, **R** turn, **Esc** close
 - **Save changes** writes everything into the file. PDFs keep their quality and any text layer

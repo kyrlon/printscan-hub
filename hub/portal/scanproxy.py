@@ -353,10 +353,11 @@ def _busy_by_other(device_id):
     return next((b for b in busy_list() if b.get("device_id") == device_id and b.get("key") != me), None)
 
 
-def _claim_scanner(kind):
+def _claim_scanner(kind, device_id=None):
     """Mark the requested scanner busy, or return a 409 if someone else is using it."""
-    params = (request.get_json(silent=True) or {}).get("params") or {}
-    device_id = str(params.get("deviceId") or "")
+    if device_id is None:
+        params = (request.get_json(silent=True) or {}).get("params") or {}
+        device_id = str(params.get("deviceId") or "")
     other = _busy_by_other(device_id)
     if other:
         mins = int((time.time() - other.get("started", 0)) // 60)
@@ -367,6 +368,40 @@ def _claim_scanner(kind):
     touch(kind)
     _start_busy(kind, device_id)
     return device_id, None
+
+
+def scan_for_hub(params, pipeline, kind="Add pages"):
+    """Run a scan on behalf of a hub page (not the scan app): same "scanner in use"
+    rules and preview handling as the Scan page. Returns (file name, None) or
+    (None, error text)."""
+    device_id, refusal = _claim_scanner(kind, str(params.get("deviceId") or ""))
+    if refusal:
+        return None, refusal.get_data(as_text=True)
+    try:
+        _begin_capture()
+        body = {"params": params, "batch": "none", "index": 1, "pipeline": pipeline, "filters": []}
+        r = requests.post(SCANNER_URL + "/api/v1/scan", json=body, timeout=(5, 900))
+        if r.status_code >= 400 and OPEN_FAILED.search(r.content or b""):
+            time.sleep(2)
+            r = requests.post(SCANNER_URL + "/api/v1/scan", json=body, timeout=(5, 900))
+        if r.status_code != 200:
+            try:
+                msg = r.json().get("message") or r.text
+            except ValueError:
+                msg = r.text
+            return None, (msg or f"error {r.status_code}").strip()[:300]
+        _end_capture()
+        name = (r.json().get("file") or {}).get("name")
+        return (name, None) if name else (None, "The scan app didn't return a file.")
+    except requests.RequestException:
+        return None, "The scanner service isn't reachable right now."
+    finally:
+        _end_busy(device_id)
+
+
+def remove_scan(name):
+    """Delete a scan file through the scan app and forget who owned it."""
+    _delete_files([name])
 
 
 def sessions():

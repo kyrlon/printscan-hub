@@ -22,9 +22,11 @@ import tempfile
 import time
 import zipfile
 
+import requests
 from flask import Blueprint, abort, jsonify, render_template, request, send_file
 
 import scanproxy
+import store
 
 SCANS_DIR = os.environ.get("SCANS_DIR", "/scans")
 CACHE_DIR = os.path.join(tempfile.gettempdir(), "psh-view")
@@ -230,6 +232,145 @@ def edit_file(path, order, rotations):
         for t in (tmp, tmp2):
             if t and os.path.exists(t):
                 os.remove(t)
+
+
+def _append(path, new_path):
+    """Put the pages of new_path (a fresh scan) after the pages of path.
+    Returns the file's path afterwards: a single JPG/PNG becomes a .zip of images,
+    because one image file can't hold several pages."""
+    st = os.stat(path)
+    ext = os.path.splitext(path)[1].lower()
+    target = path if ext in (".pdf", ".zip") else os.path.splitext(path)[0] + ".zip"
+    if target != path and os.path.exists(target):
+        raise RuntimeError(f"{os.path.basename(target)} already exists")
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".edit-", suffix=os.path.splitext(target)[1])
+    os.close(fd)
+    try:
+        if ext == ".pdf":
+            if not is_pdf(new_path):
+                raise RuntimeError("the new scan isn't a PDF")
+            _qpdf(["--empty", "--pages", path, new_path, "--", tmp])
+        else:
+            def images(p):              # [(name, bytes, date_time)] of a zip or a single image
+                if is_zip(p):
+                    with zipfile.ZipFile(p) as zf:
+                        return [(m, zf.read(m), zf.getinfo(m).date_time) for m in zip_members(zf)]
+                with open(p, "rb") as f:
+                    return [(os.path.basename(p), f.read(), time.localtime(os.path.getmtime(p))[:6])]
+            pages = images(path) + images(new_path)
+            stem = re.sub(r"\.\w+$", "", os.path.basename(target))
+            width = max(4, len(str(len(pages))))
+            with zipfile.ZipFile(tmp, "w") as out:
+                for i, (name, data, when) in enumerate(pages, 1):
+                    out.writestr(zipfile.ZipInfo(f"{stem}-{i:0{width}d}{os.path.splitext(name)[1].lower()}", when), data)
+        shutil.copymode(path, tmp)
+        try:
+            os.chown(tmp, st.st_uid, st.st_gid)
+        except OSError:
+            pass
+        os.replace(tmp, target)
+        os.utime(target, ns=(st.st_atime_ns, st.st_mtime_ns))
+        if target != path:
+            os.remove(path)
+        return target
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def _pipeline_for(path, options):
+    """The scan app's output format that matches this file, from the pipelines it offers."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".pdf":
+        want = [r"^PDF \(JPG", r"^PDF"]
+    elif ext == ".png":
+        want = [r"^PNG"]
+    else:                               # .zip / .jpg: scanservjs zips multi-page JPG scans
+        want = [r"^JPG \| @:pipeline.high-quality", r"^JPG"]
+        if is_zip(path):
+            try:
+                with zipfile.ZipFile(path) as zf:
+                    if any(m.lower().endswith(".png") for m in zip_members(zf)):
+                        want = [r"^PNG"]
+            except (OSError, zipfile.BadZipFile):
+                pass
+    for pattern in want:
+        for o in options:
+            if re.search(pattern, o, re.I) and "ocr" not in o.lower():
+                return o
+    return None
+
+
+@bp.route("/scan/view/add/options")
+def add_options():
+    """Scanners and their settings for the Add pages panel (from the scan app)."""
+    path = scan_path(request.args.get("f", ""))
+    try:
+        ctx = requests.get(scanproxy.SCANNER_URL + "/api/v1/context", timeout=60).json()
+    except (requests.RequestException, ValueError):
+        return jsonify(ok=False, message="The scanner service isn't reachable right now."), 502
+    out = []
+    for d in ctx.get("devices", []):
+        f = d.get("features", {})
+        pipe = _pipeline_for(path, (d.get("settings", {}).get("pipeline") or {}).get("options") or [])
+        if not pipe:
+            continue
+        pick = lambda k: {"options": (f.get(k) or {}).get("options") or [], "default": (f.get(k) or {}).get("default")}
+        res = pick("--resolution")
+        out.append({"id": d["id"], "name": d.get("name") or d["id"], "source": pick("--source"),
+                    "resolution": res, "mode": pick("--mode"),
+                    "feeder": ((f.get("--source") or {}).get("hubFeeder"))})
+    if not out:
+        return jsonify(ok=False, message="No scanner is available right now."), 404
+    return jsonify(ok=True, devices=out)
+
+
+@bp.route("/scan/view/add", methods=["POST"])
+def add_pages():
+    name = request.form.get("f", "")
+    path = scan_path(name)
+    try:
+        ctx = requests.get(scanproxy.SCANNER_URL + "/api/v1/context", timeout=60).json()
+    except (requests.RequestException, ValueError):
+        return jsonify(ok=False, message="The scanner service isn't reachable right now."), 502
+    dev = next((d for d in ctx.get("devices", []) if d.get("id") == request.form.get("device")), None)
+    if not dev:
+        return jsonify(ok=False, message="That scanner isn't available any more. Reload the page."), 400
+    f = dev.get("features", {})
+    pipe = _pipeline_for(path, (dev.get("settings", {}).get("pipeline") or {}).get("options") or [])
+    params = {"deviceId": dev["id"]}
+    for field, feat in (("source", "--source"), ("mode", "--mode")):
+        v = request.form.get(field)
+        if v and v in ((f.get(feat) or {}).get("options") or []):
+            params[field] = v
+    try:
+        res = int(request.form.get("resolution", "0"))
+        if res in ((f.get("--resolution") or {}).get("options") or []):
+            params["resolution"] = res
+    except ValueError:
+        pass
+    # Same scan area as the Scan page starts with (the default paper size).
+    for key, feat in (("left", "-l"), ("top", "-t"), ("width", "-x"), ("height", "-y")):
+        if f.get(feat, {}).get("default") is not None:
+            params[key] = f[feat]["default"]
+    before = page_count(path)
+    new_name, err = scanproxy.scan_for_hub(params, pipe)
+    if err:
+        return jsonify(ok=False, message=f"Couldn't scan: {err}"), 409 if "in use" in err else 500
+    new_path = os.path.join(SCANS_DIR, new_name)
+    try:
+        target = _append(path, new_path)
+    except (OSError, RuntimeError, subprocess.TimeoutExpired, zipfile.BadZipFile) as e:
+        return jsonify(ok=False, message=f"Scanned, but couldn't add the pages: {e}. "
+                                         f"The new pages are saved separately as {new_name}."), 500
+    scanproxy.remove_scan(new_name)
+    new_file = os.path.basename(target)
+    if new_file != name and store.owner_of(name):
+        store.rename(name, new_file)
+    added = page_count(target) - before
+    note = f" It's now {new_file} (a .zip of images), because a JPG/PNG holds one page." if new_file != name else ""
+    return jsonify(ok=True, file=new_file,
+                   message=f"Added {added} page{'s' if added != 1 else ''}.{note}")
 
 
 @bp.route("/scan/view")
