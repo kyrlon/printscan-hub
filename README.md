@@ -376,7 +376,8 @@ opens the same page. It works for PDFs, images, and the `.zip` scanservjs makes 
 scan is saved as JPG or PNG (one image per page). Every page is shown as a thumbnail:
 
 - **⟲ / ⟳** turns a page; **⟲ All / ⟳ All** turns every page
-- **◀ / ▶** moves a page earlier or later; with a mouse you can also drag it into place
+- **◀ / ▶** moves a page earlier or later, or drag it into place (on a touch screen, press and hold
+  the page first, then slide it)
 - **🗑** marks a page for deletion (click **↺** to keep it); **Undo all** forgets unsaved changes
 - **+ Add pages** scans more and puts them at the end: pick the scanner, *Paper from* (glass or
   feeder), resolution and color, then **Scan and add**. Missed a page or need the backs? Scan
@@ -426,6 +427,10 @@ The admin can see every device's latest preview under **Admin → Scanners → S
 While someone is previewing or scanning, everyone else's Scan page shows a **scanner in use** bar
 (who started it and how long ago). Starting a scan on that same scanner is refused until it finishes;
 other scanners stay free.
+
+Scans the hub didn't start count too: when a network scanner reports that it's scanning (eSCL status
+*Processing*) for another computer or app, such as the maker's own scan software, or from its own
+panel, the bar says so and new scans on it wait. Scanners without eSCL status can't report this.
 
 Accounts are optional: the admin creates them under **Admin → Accounts**, or set `ALLOW_SIGNUP=true`
 so people can create their own. The **Sign in** link appears on the Scan page once accounts are on.

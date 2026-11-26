@@ -50,6 +50,7 @@
   function render(list) {
     var others = list.filter(function (b) { return !b.mine; }), mine = list.filter(function (b) { return b.mine; });
     var parts = others.map(function (b) {
+      if (b.external) return '⚠ ' + b.scanner + ' is busy scanning for ' + b.who + '. Wait for it to finish before you scan on it.';
       return '⚠ ' + b.scanner + ' is in use: ' + b.who + ' started a ' + b.kind.toLowerCase() + ' ' + secs(b.seconds) +
              ' ago. Wait for it to finish before you scan on it.';
     });

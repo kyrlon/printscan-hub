@@ -1037,7 +1037,10 @@ def busy_info():
     names, me, now = scanner_names(), scanproxy.my_key(), time.time()
     return [{"scanner": names.get(b.get("device_id")) or "The scanner", "who": b.get("who", "Someone"),
              "kind": b.get("kind", "Scan"), "seconds": int(now - b.get("started", now)),
-             "mine": b.get("key") == me} for b in scanproxy.busy_list()]
+             "mine": b.get("key") == me} for b in scanproxy.busy_list()] + \
+           [{"scanner": names.get(d) or "The scanner", "external": True, "mine": False, "seconds": 0,
+             "who": "another computer or the printer's own panel", "kind": "Scan"}
+            for d in scanproxy.external_busy()]
 
 
 @app.get("/scan/status")

@@ -343,6 +343,9 @@ def _end_busy(device_id):
     b = _pv_read(name)
     if b and b.get("key") == _pv_key():
         try:
+            # The scanner can keep reporting "Processing" for a bit after our scan:
+            # remember it was ours so busy_elsewhere() doesn't blame someone else.
+            _pv_write(_done_name(device_id), {"at": time.time()})
             os.remove(os.path.join(PREVIEW_DIR, name + ".json"))
         except OSError:
             pass
@@ -351,6 +354,64 @@ def _end_busy(device_id):
 def _busy_by_other(device_id):
     me = _pv_key()
     return next((b for b in busy_list() if b.get("device_id") == device_id and b.get("key") != me), None)
+
+
+# ------------------------------------- busy with something outside the hub ---
+# The hub only knows about scans it started. A scan from another app (Brother
+# iPrint&Scan, Windows Scan...) or from the printer's own panel shows up in the
+# scanner's eSCL status as State=Processing, so ask the scanner itself.
+EXTERNAL_TTL = 5              # seconds an answer is reused (the Scan page polls every 3 s)
+OWN_GRACE = 45                # after our own scan the scanner may still say Processing for a while
+_ext_cache = {}
+
+
+def _escl_url(device_id):
+    """eSCL address of a scanner the scan app found, from scanners-detected.json."""
+    try:
+        data = json.loads(open(os.path.join(os.environ.get("HUB_SHARED_DIR", "/data/shared"),
+                                            "scanners-detected.json")).read())
+    except (OSError, ValueError):
+        return None
+    return next((d.get("url") for d in data.get("devices", []) if d.get("id") == device_id and d.get("url")), None)
+
+
+def _done_name(device_id):
+    return "_done-" + hashlib.sha256((device_id or "").encode()).hexdigest()[:16]
+
+
+def busy_elsewhere(device_id):
+    """True if the scanner says it's scanning, and it isn't a scan the hub started or
+    just finished. None when the scanner can't tell (no eSCL, offline)."""
+    if any(b.get("device_id") == device_id for b in busy_list()):
+        return False                           # that's ours: shown by the hub's own marker
+    done = _pv_read(_done_name(device_id)) or {}
+    if time.time() - done.get("at", 0) < OWN_GRACE:
+        return False
+    url = _escl_url(device_id)
+    if not url:
+        return None
+    hit = _ext_cache.get(url)
+    if hit and time.time() - hit[0] < EXTERNAL_TTL:
+        return hit[1]
+    try:
+        r = requests.get(url.rstrip("/") + "/ScannerStatus", timeout=2)
+        m = re.search(r"<(?:\w+:)?State>\s*(\w+)\s*</", r.text) if r.ok else None
+        busy = bool(m and m.group(1).lower() == "processing")
+    except requests.RequestException:
+        busy = None
+    _ext_cache[url] = (time.time(), busy)
+    return busy
+
+
+def external_busy():
+    """[device id] of scanners busy with a scan the hub didn't start."""
+    try:
+        data = json.loads(open(os.path.join(os.environ.get("HUB_SHARED_DIR", "/data/shared"),
+                                            "scanners-detected.json")).read())
+    except (OSError, ValueError):
+        return []
+    ids = [d["id"] for d in data.get("devices", []) if d.get("url") and not d.get("hidden")]
+    return [i for i in ids if busy_elsewhere(i)]
 
 
 def _claim_scanner(kind, device_id=None):
@@ -365,6 +426,10 @@ def _claim_scanner(kind, device_id=None):
         return device_id, Response(
             f"The scanner is in use: {other.get('who', 'someone')} started a {other.get('kind', 'scan').lower()} "
             f"{since} ago. Try again when it's finished.", 409, mimetype="text/plain")
+    if busy_elsewhere(device_id):
+        return device_id, Response(
+            "The scanner is in use: it's scanning for another computer or app, or from its own panel. "
+            "Try again when it's finished.", 409, mimetype="text/plain")
     touch(kind)
     _start_busy(kind, device_id)
     return device_id, None

@@ -15,6 +15,7 @@
   .sv-page.changed { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
   .sv-page[draggable=true] { cursor:grab; }
   .sv-page.dragging { opacity:.4; }
+  .sv-page { -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
   .sv-page.drop-before { box-shadow:-4px 0 0 0 var(--accent); }
   .sv-page.drop-after { box-shadow:4px 0 0 0 var(--accent); }
   .sv-page.deleted .sv-thumb img { opacity:.25; filter:grayscale(1); }
@@ -70,7 +71,7 @@
   </div>
 </div>
 <div class="sv-msg small {{ 'ok' if saved }}" id="sv-msg" role="status" aria-live="polite">
-  {%- if saved %}{{ saved }}{% elif pages %}Click a page to zoom in. Turn ⟲ ⟳, move ◀ ▶ (or drag) and delete 🗑 pages, then Save changes.{% endif -%}
+  {%- if saved %}{{ saved }}{% elif pages %}Click a page to zoom in. Turn ⟲ ⟳, move ◀ ▶ (or drag; on a touch screen press and hold first) and delete 🗑 pages, then Save changes.{% endif -%}
 </div>
 
 {% if not pages %}
@@ -250,6 +251,46 @@
       if (dragging) dragging.classList.remove('dragging');
       dragging = null; clearDrop();
     });
+
+    // Touch screens don't send drag events: press and hold a page, then slide it.
+    var hold = null, tDrag = null, tStart = null, target = null, scrollTimer = null;
+    function stopTouch() {
+      clearTimeout(hold); hold = null; clearInterval(scrollTimer); scrollTimer = null;
+      if (tDrag) tDrag.classList.remove('dragging');
+      tDrag = null; target = null; clearDrop();
+    }
+    grid.addEventListener('touchstart', function (e) {
+      var c = e.target.closest('.sv-page');
+      if (!c || e.touches.length !== 1 || e.target.closest('button:not(.sv-thumb)') || PAGES < 2) return;
+      tStart = [e.touches[0].clientX, e.touches[0].clientY];
+      hold = setTimeout(function () {
+        tDrag = c; c.classList.add('dragging');
+        if (navigator.vibrate) navigator.vibrate(15);
+      }, 350);
+    }, { passive: true });
+    grid.addEventListener('touchmove', function (e) {
+      var t = e.touches[0];
+      if (!tDrag) {                             // moved before the hold finished: it's a scroll
+        if (hold && Math.hypot(t.clientX - tStart[0], t.clientY - tStart[1]) > 10) { clearTimeout(hold); hold = null; }
+        return;
+      }
+      e.preventDefault();                        // dragging: don't scroll the page
+      clearDrop();
+      var el = document.elementFromPoint(t.clientX, t.clientY), c = el && el.closest('.sv-page');
+      target = c && c !== tDrag ? { card: c, after: after(c, t) } : null;
+      if (target) target.card.classList.add(target.after ? 'drop-after' : 'drop-before');
+      var edge = t.clientY < 70 ? -12 : t.clientY > window.innerHeight - 70 ? 12 : 0;
+      clearInterval(scrollTimer); scrollTimer = edge ? setInterval(function () { window.scrollBy(0, edge); }, 16) : null;
+    }, { passive: false });
+    grid.addEventListener('touchend', function (e) {
+      if (tDrag) {
+        e.preventDefault();                      // no zoom-in "click" after a drag
+        if (target) { grid.insertBefore(tDrag, target.after ? target.card.nextElementSibling : target.card); refresh(); }
+      }
+      stopTouch();
+    });
+    grid.addEventListener('touchcancel', stopTouch);
+    grid.addEventListener('contextmenu', function (e) { if (tDrag || hold) e.preventDefault(); });
   }
 
   saveBtn.addEventListener('click', function () {
