@@ -56,7 +56,7 @@ New to printer and scanner jargon (ADF, IPP, eSCL, PPD…)? See [Help: terms exp
 | Container | Base image | What runs inside |
 |---|---|---|
 | **hub** (`printscan-hub`) | Debian 12 (bookworm-slim) | **CUPS** print server and its drivers, the **web portal** (Python/Flask, served by gunicorn, talks to CUPS via pycups), **LibreOffice** to turn Office files into PDF, **Avahi** for printer discovery, the `hub-driver` installer, and the gateway to the scan page that keeps private scans private (SQLite, in `data/portal/`) |
-| **scanner** (`printscan-scanner`) | [`sbs20/scanservjs`](https://hub.docker.com/r/sbs20/scanservjs) | **scanservjs** web scanning app on top of **SANE** and **sane-airscan**, plus the hub's additions: driver installer, feeder detection, whole-stack feeder scans, 2-sided (long/short edge), page review before saving, Letter default, tooltips (press and hold on touch screens), "Scan now" label |
+| **scanner** (`printscan-scanner`) | [`sbs20/scanservjs`](https://hub.docker.com/r/sbs20/scanservjs) | **scanservjs** web scanning app on top of **SANE** and **sane-airscan**, plus the hub's additions: driver installer, feeder detection, whole-stack feeder scans, 2-sided (long/short edge), page review before saving, links to View & rotate, Letter default, tooltips (press and hold on touch screens), "Scan now" label |
 | **inbox** (`printscan-inbox`) | Alpine 3.20 | **vsftpd** FTP server (and **Samba** on Linux hosts) that saves the printer's own scans into `scans/` |
 
 The scan app isn't reachable on its own port. The portal serves it at `/scan/app/` and shows it inside its **Scan** tab,
@@ -369,6 +369,21 @@ Set **Batch → Manual**. After each scan a window shows every page scanned so f
 
 With any other Batch setting the file is saved straight away. You can still open or delete it under **Files**.
 
+### View, zoom and rotate a saved scan
+
+After every scan a bar at the bottom says **Saved … · View & rotate**. In **Files**, the eye icon
+opens the same page. It shows every page as a thumbnail:
+
+- **⟲ / ⟳** under a page turns it; **⟲ All / ⟳ All** turns every page
+- Click a page to zoom: mouse wheel, pinch, **+ / −**, double-click, or drag to move around.
+  Keys: **← →** pages, **+ −** zoom, **0** fit, **1** actual size, **R** turn, **Esc** close
+- **Save changes** writes the turns into the file. PDFs keep their quality and any text layer (only
+  each page's rotation flag changes); JPG/PNG/TIFF are saved again at high quality. The file keeps
+  its date, so it stays in place in the list.
+
+The hub reads `scans/` directly for this (it's mounted into the hub container too), and only shows
+scans this browser may see under the current Files mode.
+
 `SCAN_DEFAULT_SOURCE` in `.env` sets where scans start:
 
 | Value | Behaviour |
@@ -473,7 +488,7 @@ anything you had to change.
 | `data/portal/` | Accounts and which private scan belongs to whom (`portal.db`). Back this up too. Also each device's scan preview and session info (`previews/`), which can be deleted |
 | `data/shared/` | Scanners the scan app detected, and the ones hidden on the Admin page |
 | `drivers/printer/`, `drivers/scanner/` | Drivers to re-install on every rebuild |
-| `scans/` | Scanned files |
+| `scans/` | Scanned files (shared by the scan app, the printer's FTP/SMB inbox, and the hub's View & rotate page) |
 | `hub/` | Print hub image: CUPS + portal (`hub/portal/app.py`) |
 | `scanner/` | scanservjs image with the same driver manager |
 | `inbox/` | FTP/SMB drop folder for the printer's own Scan button |

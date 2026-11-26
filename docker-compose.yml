@@ -27,6 +27,7 @@ services:
       - ./data/cups:/etc/cups          # printers, PPDs, cupsd.conf (persistent)
       - ./data/portal:/data/portal     # accounts + who owns which private scan
       - ./data/shared:/data/shared     # scanners detected by the scanner container / hidden list
+      - ./scans:/scans                 # saved scans: the View & rotate page reads and rewrites them
       - ./drivers/printer:/drivers     # drivers to (re)install on every rebuild
       - /dev/bus/usb:/dev/bus/usb
       - /var/run/dbus:/var/run/dbus    # use the host's avahi-daemon if present

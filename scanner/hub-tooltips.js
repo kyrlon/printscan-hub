@@ -41,7 +41,7 @@
     [/^clear$/i, 'Reset the settings to their defaults and clear the preview.'],
     [/^paper size$/i, 'Set the scan area to a standard paper size (Letter, A4, …).'],
     [/^scan$/i, 'Scanner settings (this page).'],
-    [/^files$/i, 'Your saved scans: download, view or delete them.'],
+    [/^files$/i, 'Your saved scans: view and rotate (eye icon), download, rename or delete them.'],
     [/^settings$/i, 'Preferences for this scan app (theme, thumbnails…).'],
     [/^about$/i, 'Version information.']
   ];

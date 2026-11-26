@@ -21,6 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ghostscript poppler-utils \
         # portal
         python3 python3-flask python3-cups python3-requests gunicorn \
+        # scan viewer: rotate PDF pages without re-encoding, render/rotate images
+        qpdf python3-pil \
         # needed by many vendor installers
         ca-certificates curl wget file procps psmisc lsb-base \
     && if [ "$INSTALL_OFFICE" = "true" ]; then \

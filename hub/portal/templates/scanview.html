@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} · {{ hub_name }}{% endblock %}
+{% block content %}
+<style>
+  main.wrap { max-width:1200px; }
+  .sv-head { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; margin-bottom:14px; }
+  .sv-head h1 { font-size:18px; margin:0; word-break:break-all; flex:1 1 260px; }
+  .sv-tools { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .sv-tools .sep { width:1px; align-self:stretch; background:var(--line); margin:0 2px; }
+  .sv-msg { min-height:22px; margin:-6px 0 10px; }
+  .sv-msg.ok { color:var(--ok); } .sv-msg.err { color:var(--err); }
+  .sv-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:16px; }
+  .sv-page { min-width:0; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px;
+             display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .sv-page.changed { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .sv-thumb { width:100%; min-width:0; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center;
+              cursor:zoom-in; background:var(--bg); border-radius:6px; overflow:hidden; border:0; padding:0; }
+  .sv-thumb img { max-width:100%; max-height:100%; box-shadow:0 1px 4px rgba(0,0,0,.25);
+                  transition:transform .2s; background:#fff; }
+  .sv-page .bar { display:flex; align-items:center; gap:6px; width:100%; justify-content:space-between; }
+  .sv-page .num { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sv-page .num { font-size:13px; color:var(--muted); }
+  .icon-btn { background:transparent; color:var(--text); border:1px solid var(--line); border-radius:6px;
+              padding:3px 8px; font-size:15px; line-height:1.2; font-weight:600; min-width:34px; }
+  .icon-btn:hover { border-color:var(--accent); color:var(--accent); }
+  /* zoom view */
+  .lb { position:fixed; inset:0; z-index:50; background:rgba(10,12,16,.94); display:flex; flex-direction:column; }
+  .lb-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 12px; color:#e6e9ef; }
+  .lb-bar .icon-btn { color:#e6e9ef; border-color:#3a4252; }
+  .lb-bar .icon-btn:hover { color:#9cbcff; border-color:#9cbcff; }
+  .lb-bar .grow { flex:1; }
+  .lb-zoom { min-width:52px; text-align:center; font-variant-numeric:tabular-nums; font-size:14px; }
+  .lb-stage { position:relative; flex:1; overflow:hidden; touch-action:none; cursor:grab; }
+  .lb-stage.drag { cursor:grabbing; }
+  .lb-stage img { position:absolute; left:50%; top:50%; transform-origin:center center; max-width:none;
+                  user-select:none; -webkit-user-drag:none; background:#fff; box-shadow:0 2px 18px rgba(0,0,0,.5); }
+  .lb-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#98a2b3; }
+  @media (max-width:600px) { .lb-hide-sm { display:none; } .sv-grid { grid-template-columns:repeat(2,1fr); gap:10px; } }
+</style>
+
+<div class="sv-head">
+  <a class="btn secondary" href="{{ url_for('scan') }}" title="Back to the Scan page">← Scan</a>
+  <h1>{{ name }} <span class="muted small" style="font-weight:400">· {{ pages }} page{{ 's' if pages != 1 }}</span></h1>
+  <div class="sv-tools">
+    <button type="button" class="icon-btn" data-all="-90" title="Turn every page left">⟲ All</button>
+    <button type="button" class="icon-btn" data-all="90" title="Turn every page right">⟳ All</button>
+    <span class="sep"></span>
+    <a class="btn secondary" href="{{ download }}" download title="Download the file as it is saved now">Download</a>
+    <button type="button" id="sv-save" disabled title="Write the rotated pages into the file">Save changes</button>
+  </div>
+</div>
+<div class="sv-msg small" id="sv-msg" role="status" aria-live="polite">
+  {%- if pages %}Click a page to zoom in. Turn pages with ⟲ ⟳, then Save changes.{% endif -%}
+</div>
+
+{% if not pages %}
+  <div class="flash error">This file couldn't be read.</div>
+{% else %}
+<div class="sv-grid" id="sv-grid">
+  {% for p in range(1, pages + 1) %}
+  <div class="sv-page" data-page="{{ p }}">
+    <button type="button" class="sv-thumb" title="Zoom in on page {{ p }}">
+      <img loading="lazy" alt="Page {{ p }}"
+           src="{{ url_for('scanview.page', f=name, p=p, s='thumb') }}"></button>
+    <div class="bar">
+      <button type="button" class="icon-btn" data-turn="-90" title="Turn left">⟲</button>
+      <span class="num">Page {{ p }}</span>
+      <button type="button" class="icon-btn" data-turn="90" title="Turn right">⟳</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Page view">
+  <div class="lb-bar">
+    <button type="button" class="icon-btn" data-lb="prev" title="Previous page (←)">‹</button>
+    <span id="lb-num" class="small"></span>
+    <button type="button" class="icon-btn" data-lb="next" title="Next page (→)">›</button>
+    <span class="grow"></span>
+    <button type="button" class="icon-btn" data-lb="left" title="Turn left (Shift+R)">⟲</button>
+    <button type="button" class="icon-btn" data-lb="right" title="Turn right (R)">⟳</button>
+    <button type="button" class="icon-btn" data-lb="out" title="Zoom out (−)">−</button>
+    <span class="lb-zoom" id="lb-zoom">100%</span>
+    <button type="button" class="icon-btn" data-lb="in" title="Zoom in (+)">+</button>
+    <button type="button" class="icon-btn lb-hide-sm" data-lb="fit" title="Fit to screen (0)">Fit</button>
+    <button type="button" class="icon-btn lb-hide-sm" data-lb="actual" title="Actual size (1)">1:1</button>
+    <button type="button" class="icon-btn" data-lb="close" title="Close (Esc)">✕</button>
+  </div>
+  <div class="lb-stage" id="lb-stage">
+    <div class="lb-loading" id="lb-loading">Loading…</div>
+    <img id="lb-img" alt="">
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var NAME = {{ name|tojson }}, PAGES = {{ pages }};
+  var PAGE_URL = {{ url_for('scanview.page')|tojson }}, SAVE_URL = {{ url_for('scanview.save')|tojson }};
+  var CSRF = {{ csrf_token()|tojson }};
+  var rot = {};                                   // page -> degrees clockwise, pending
+  var version = Date.now();                       // bumps after Save so images reload
+  var saveBtn = document.getElementById('sv-save'), msg = document.getElementById('sv-msg');
+
+  function norm(d) { return ((d % 360) + 360) % 360; }
+  function src(p, size) {
+    return PAGE_URL + '?f=' + encodeURIComponent(NAME) + '&p=' + p + '&s=' + size + '&v=' + version;
+  }
+  function card(p) { return document.querySelector('.sv-page[data-page="' + p + '"]'); }
+  function changed() { return Object.keys(rot).some(function (p) { return norm(rot[p]); }); }
+  function say(text, cls) { msg.textContent = text; msg.className = 'sv-msg small ' + (cls || ''); }
+
+  function paint(p) {
+    var c = card(p), d = rot[p] || 0;
+    if (!c) return;
+    c.querySelector('.sv-thumb img').style.transform = 'rotate(' + d + 'deg)';
+    c.classList.toggle('changed', !!norm(d));
+    saveBtn.disabled = !changed();
+  }
+  function turn(p, by) { rot[p] = (rot[p] || 0) + by; paint(p); if (lb.page === p) lbDraw(); }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-turn]');
+    if (t) { turn(+t.closest('.sv-page').dataset.page, +t.dataset.turn); return; }
+    var a = e.target.closest('[data-all]');
+    if (a) { for (var p = 1; p <= PAGES; p++) turn(p, +a.dataset.all); return; }
+    var th = e.target.closest('.sv-thumb');
+    if (th) lbOpen(+th.closest('.sv-page').dataset.page);
+  });
+
+  saveBtn.addEventListener('click', function () {
+    var body = new FormData(), out = {};
+    Object.keys(rot).forEach(function (p) { if (norm(rot[p])) out[p] = norm(rot[p]); });
+    body.append('csrf', CSRF); body.append('f', NAME); body.append('rotations', JSON.stringify(out));
+    var stop = window.hubBusy ? window.hubBusy(saveBtn, 'Saving…') : function () {};
+    fetch(SAVE_URL, { method: 'POST', body: body, credentials: 'same-origin' })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, message: 'Couldn\'t save (error ' + r.status + ').' }; }); })
+      .then(function (d) {
+        stop();
+        if (!d.ok) { say(d.message, 'err'); saveBtn.disabled = !changed(); return; }
+        rot = {}; version = Date.now();
+        document.querySelectorAll('.sv-page').forEach(function (c) {
+          var img = c.querySelector('.sv-thumb img');
+          img.style.transition = 'none'; img.style.transform = '';
+          img.src = src(+c.dataset.page, 'thumb');
+          c.classList.remove('changed');
+          setTimeout(function () { img.style.transition = ''; }, 50);
+        });
+        saveBtn.disabled = true;
+        say(d.message, 'ok');
+        if (lb.page) lbLoad();
+      })
+      .catch(function () { stop(); say('Couldn\'t reach the hub. Try again.', 'err'); saveBtn.disabled = !changed(); });
+  });
+
+  window.addEventListener('beforeunload', function (e) {
+    if (changed()) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  // ---- zoom view ----------------------------------------------------------
+  var box = document.getElementById('lb'), stage = document.getElementById('lb-stage'),
+      img = document.getElementById('lb-img'), loading = document.getElementById('lb-loading'),
+      zoomLbl = document.getElementById('lb-zoom'), numLbl = document.getElementById('lb-num');
+  var lb = { page: 0, scale: 1, fit: 1, x: 0, y: 0, w: 0, h: 0 };
+
+  function sideways() { return norm(rot[lb.page] || 0) % 180 !== 0; }
+  function fitScale() {
+    if (!lb.w) return 1;
+    var w = sideways() ? lb.h : lb.w, h = sideways() ? lb.w : lb.h;
+    return Math.min((stage.clientWidth - 24) / w, (stage.clientHeight - 24) / h, 4);
+  }
+  function lbDraw() {
+    img.style.width = lb.w + 'px'; img.style.height = lb.h + 'px';
+    img.style.transform = 'translate(-50%,-50%) translate(' + lb.x + 'px,' + lb.y + 'px) scale(' + lb.scale +
+                          ') rotate(' + (rot[lb.page] || 0) + 'deg)';
+    zoomLbl.textContent = Math.round(lb.scale / lb.fit * 100) + '%';
+  }
+  function lbFit() { lb.fit = fitScale(); lb.scale = lb.fit; lb.x = lb.y = 0; lbDraw(); }
+  function lbZoom(factor, cx, cy) {             // cx, cy: point to keep still, relative to the stage centre
+    var s = Math.max(lb.fit * 0.5, Math.min(lb.fit * 12, lb.scale * factor));
+    var k = s / lb.scale;
+    cx = cx || 0; cy = cy || 0;
+    lb.x = cx - (cx - lb.x) * k; lb.y = cy - (cy - lb.y) * k;
+    lb.scale = s; lbDraw();
+  }
+  function lbLoad() {
+    loading.hidden = false; img.style.visibility = 'hidden';
+    numLbl.textContent = 'Page ' + lb.page + ' of ' + PAGES;
+    var want = lb.page;
+    img.onload = function () {
+      if (lb.page !== want) return;
+      lb.w = img.naturalWidth; lb.h = img.naturalHeight;
+      loading.hidden = true; img.style.visibility = ''; lbFit();
+    };
+    img.onerror = function () { loading.textContent = 'Couldn\'t load this page.'; };
+    img.src = src(lb.page, 'full');
+  }
+  function lbOpen(p) { lb.page = p; box.hidden = false; document.body.style.overflow = 'hidden'; lbLoad(); }
+  function lbClose() { box.hidden = true; lb.page = 0; document.body.style.overflow = ''; img.removeAttribute('src'); }
+  function lbGo(d) { var p = lb.page + d; if (p >= 1 && p <= PAGES) { lb.page = p; lbLoad(); } }
+
+  box.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-lb]');
+    if (!b) return;
+    ({ prev: function () { lbGo(-1); }, next: function () { lbGo(1); },
+       left: function () { turn(lb.page, -90); lbFit(); }, right: function () { turn(lb.page, 90); lbFit(); },
+       'in': function () { lbZoom(1.25); }, out: function () { lbZoom(0.8); },
+       fit: lbFit, actual: function () { lb.scale = 1; lb.x = lb.y = 0; lbDraw(); }, close: lbClose })[b.dataset.lb]();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (box.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    var k = e.key;
+    if (k === 'Escape') lbClose();
+    else if (k === 'ArrowLeft' || k === 'PageUp') lbGo(-1);
+    else if (k === 'ArrowRight' || k === 'PageDown') lbGo(1);
+    else if (k === '+' || k === '=') lbZoom(1.25);
+    else if (k === '-' || k === '_') lbZoom(0.8);
+    else if (k === '0') lbFit();
+    else if (k === '1') { lb.scale = 1; lb.x = lb.y = 0; lbDraw(); }
+    else if (k === 'r') { turn(lb.page, 90); lbFit(); }
+    else if (k === 'R') { turn(lb.page, -90); lbFit(); }
+    else return;
+    e.preventDefault();
+  });
+  window.addEventListener('resize', function () { if (lb.page && lb.w) lbFit(); });
+
+  function centre(ev) {
+    var r = stage.getBoundingClientRect();
+    return [ev.clientX - r.left - r.width / 2, ev.clientY - r.top - r.height / 2];
+  }
+  stage.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var c = centre(e);
+    lbZoom(Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0015)), c[0], c[1]);
+  }, { passive: false });
+  stage.addEventListener('dblclick', function (e) {
+    var c = centre(e);
+    if (lb.scale > lb.fit * 1.05) lbFit(); else lbZoom(2.5, c[0], c[1]);
+  });
+
+  // Drag to move; two fingers to pinch.
+  var ptrs = {}, last = null, pinch = null;
+  stage.addEventListener('pointerdown', function (e) {
+    stage.setPointerCapture(e.pointerId);
+    ptrs[e.pointerId] = [e.clientX, e.clientY];
+    stage.classList.add('drag');
+  });
+  stage.addEventListener('pointermove', function (e) {
+    if (!ptrs[e.pointerId]) return;
+    var prev = ptrs[e.pointerId];
+    ptrs[e.pointerId] = [e.clientX, e.clientY];
+    var ids = Object.keys(ptrs);
+    if (ids.length === 2) {
+      var a = ptrs[ids[0]], b = ptrs[ids[1]];
+      var dist = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      var r = stage.getBoundingClientRect();
+      var mid = [(a[0] + b[0]) / 2 - r.left - r.width / 2, (a[1] + b[1]) / 2 - r.top - r.height / 2];
+      if (pinch) lbZoom(dist / pinch, mid[0], mid[1]);
+      pinch = dist;
+    } else if (ids.length === 1) {
+      lb.x += e.clientX - prev[0]; lb.y += e.clientY - prev[1]; lbDraw();
+    }
+  });
+  function up(e) {
+    delete ptrs[e.pointerId];
+    if (Object.keys(ptrs).length < 2) pinch = null;
+    if (!Object.keys(ptrs).length) stage.classList.remove('drag');
+  }
+  stage.addEventListener('pointerup', up);
+  stage.addEventListener('pointercancel', up);
+
+  // ...#p2 opens page 2 in the zoom view (a link to one page).
+  var m = /^#p(\d+)$/.exec(location.hash);
+  if (m && +m[1] >= 1 && +m[1] <= PAGES) lbOpen(+m[1]);
+})();
+</script>
+{% endblock %}

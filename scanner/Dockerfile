@@ -43,9 +43,16 @@ RUN sed -i 's/^escl$/#escl  (disabled: sane-airscan handles eSCL)/' /etc/sane.d/
 
 # Hover descriptions for the scan settings (press and hold on touch screens),
 # and the feeder status shown under the Device field.
-COPY scanner/hub-tooltips.js scanner/hub-feeder.js hub/portal/static/longpress-tips.js /usr/lib/scanservjs/client/
-RUN sed -i 's#</body>#<script src="hub-tooltips.js"></script><script src="hub-feeder.js"></script><script src="longpress-tips.js"></script></body>#' /usr/lib/scanservjs/client/index.html \
-    && grep -q 'longpress-tips.js' /usr/lib/scanservjs/client/index.html
+# hub-viewer.js links finished scans to the hub's View & rotate page.
+COPY scanner/hub-tooltips.js scanner/hub-feeder.js scanner/hub-viewer.js hub/portal/static/longpress-tips.js /usr/lib/scanservjs/client/
+RUN sed -i 's#</body>#<script src="hub-tooltips.js"></script><script src="hub-feeder.js"></script><script src="hub-viewer.js"></script><script src="longpress-tips.js"></script></body>#' /usr/lib/scanservjs/client/index.html \
+    && grep -q 'hub-viewer.js' /usr/lib/scanservjs/client/index.html
+
+# FILES list: an eye icon before Download that opens View & rotate (window.hubView).
+# Original: "item.actions":j(({item:i})=>[h(Ve,{class:"mr-2",icon:r.mdiDownload,...
+RUN f=$(ls /usr/lib/scanservjs/client/assets/index-*.js) \
+    && sed -i -E 's#("item\.actions":[A-Za-z_$]+\(\(\{item:([A-Za-z_$]+)\}\)=>\[)([A-Za-z_$]+)\(([A-Za-z_$]+),\{class:"mr-2",icon:([A-Za-z_$]+)\.mdiDownload#\1\3(\4,{class:"mr-2",title:"View and rotate",icon:"M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z",onClick:s=>window.hubView\&\&hubView(\2)},null,8,["onClick"]),\3(\4,{class:"mr-2",icon:\5.mdiDownload#' "$f" \
+    && grep -q 'hubView(' "$f"
 
 # Same browser-tab icon as the hub portal (replaces scanservjs' own icon).
 COPY hub/portal/static/icon.svg /usr/lib/scanservjs/client/hub-icon.svg

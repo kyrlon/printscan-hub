@@ -27,6 +27,7 @@ from flask import (Flask, Response, abort, flash, redirect, render_template,
 from werkzeug.utils import secure_filename
 
 import scanproxy
+import scanview
 import store
 
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
@@ -131,6 +132,7 @@ app.config.update(SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True,
 
 store.init()
 app.register_blueprint(scanproxy.bp)
+app.register_blueprint(scanview.bp)
 
 _cups_user_lock = threading.Lock()
 _ppd_cache = {"at": 0.0, "data": {}}
